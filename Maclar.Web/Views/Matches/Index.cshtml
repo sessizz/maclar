@@ -1,0 +1,121 @@
+@model Maclar.Web.Models.MatchesIndexViewModel
+
+@{
+    ViewData["Title"] = "Maç Takvimi";
+}
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <h2>İstanbul Voleybol Maç Takvimi</h2>
+        <p class="text-muted mb-1">
+            Kaynak: <a href="https://istanbul.voleyboliltemsilciligi.com/MacTakvimi" target="_blank" rel="noopener">istanbul.voleyboliltemsilciligi.com/MacTakvimi</a>
+        </p>
+        @if (Model.LastUpdatedAt.HasValue)
+        {
+            <p class="text-muted mb-0">
+                Son güncelleme (UTC): @Model.LastUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm")
+            </p>
+        }
+    </div>
+    <div class="col-md-6 text-md-end mt-3 mt-md-0">
+        <input id="matchSearch" name="search" class="form-control form-control-lg" placeholder="Takım adıyla ara (ör: Fenerbahçe)" value="@Model.Search" />
+        <small class="text-muted">Yazdıkça tablo dinamik olarak filtrelenecektir.</small>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-warning">
+        @Model.ErrorMessage
+    </div>
+}
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle" id="matchesTable">
+        <thead class="table-light">
+            <tr>
+                <th>Tarih</th>
+                <th>Saat</th>
+                <th>Salon</th>
+                <th>Ev Sahibi</th>
+                <th>Misafir</th>
+                <th>Kategori</th>
+                <th>Set Sonuçları</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var match in Model.Matches)
+        {
+            <tr>
+                <td>@(match.Date?.ToString("dd.MM.yyyy") ?? match.RawDateText)</td>
+                <td>@(match.Time?.ToString(@"hh\:mm") ?? match.RawTimeText)</td>
+                <td>@match.Venue</td>
+                <td class="team-cell">
+                    @match.HomeTeam
+                    @if (match.HomeSets.HasValue)
+                    {
+                        @($" ({match.HomeSets})")
+                    }
+                </td>
+                <td class="team-cell">
+                    @match.AwayTeam
+                    @if (match.AwaySets.HasValue)
+                    {
+                        @($" ({match.AwaySets})")
+                    }
+                </td>
+                <td>
+                    @match.CategoryCode
+                    @if (!string.IsNullOrWhiteSpace(match.CategoryDescription))
+                    {
+                        <span class="text-muted">(@match.CategoryDescription)</span>
+                    }
+                </td>
+                <td>@match.SetScores</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const searchInput = document.getElementById('matchSearch');
+            const table = document.getElementById('matchesTable');
+            if (!searchInput || !table) {
+                return;
+            }
+
+            const rows = Array.from(table.querySelectorAll('tbody tr'));
+
+            function normalize(text) {
+                return (text || '').toLocaleLowerCase('tr-TR');
+            }
+
+            function filter() {
+                const term = normalize(searchInput.value);
+                if (!term) {
+                    rows.forEach(r => r.style.display = '');
+                    return;
+                }
+
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('.team-cell');
+                    let text = '';
+                    cells.forEach(c => text += ' ' + c.textContent);
+
+                    if (normalize(text).includes(term)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            }
+
+            searchInput.addEventListener('input', filter);
+        })();
+    </script>
+}
+
+

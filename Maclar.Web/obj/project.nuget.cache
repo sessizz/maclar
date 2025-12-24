@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "kWC8JenpjFs=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\alper\\Documents\\repo\\maclar\\Maclar.Web\\Maclar.Web.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\alper\\.nuget\\packages\\htmlagilitypack\\1.12.4\\htmlagilitypack.1.12.4.nupkg.sha512"
+  ],
+  "logs": []
+}
