@@ -133,7 +133,9 @@ public class MatchScraperService : IMatchScraperService
             var awayTeam = CleanText(cells.ElementAtOrDefault(awayIndex)?.InnerText ?? string.Empty);
             var setScores = CleanText(cells.ElementAtOrDefault(setIndex)?.InnerText ?? string.Empty);
 
-            // Ktg sütunu – genelde sondan birkaç önceki kolonlarda
+            // Küme ve Ktg sütunları – genelde sondan birkaç önceki kolonlarda
+            // Küme genelde Ktg'den bir önceki kolonda (sondan 4.)
+            var league = CleanText(cells.ElementAtOrDefault(cells.Count - 4)?.InnerText ?? string.Empty);
             var categoryCode = CleanText(cells[^3].InnerText);
 
             var match = new MatchDto
@@ -144,6 +146,7 @@ public class MatchScraperService : IMatchScraperService
                 HomeTeam = homeTeam,
                 AwayTeam = awayTeam,
                 SetScores = setScores,
+                League = league,
                 CategoryCode = categoryCode,
                 Date = date,
                 Time = ParseTime(timeText ?? string.Empty),

@@ -16,6 +16,11 @@ public class MatchDto
     public string? SetScores { get; set; }
 
     /// <summary>
+    /// Sitedeki "Küme" sütunundaki küme bilgisi.
+    /// </summary>
+    public string? League { get; set; }
+
+    /// <summary>
     /// Sitedeki "Ktg" sütunundaki kategori kodu (örn. MdK, YE, MdE).
     /// </summary>
     public string? CategoryCode { get; set; }

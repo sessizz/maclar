@@ -39,6 +39,7 @@
                 <th>Salon</th>
                 <th>Ev Sahibi</th>
                 <th>Misafir</th>
+                <th>Küme</th>
                 <th>Kategori</th>
                 <th>Set Sonuçları</th>
             </tr>
@@ -64,6 +65,7 @@
                         @($" ({match.AwaySets})")
                     }
                 </td>
+                <td>@match.League</td>
                 <td>
                     @match.CategoryCode
                     @if (!string.IsNullOrWhiteSpace(match.CategoryDescription))
