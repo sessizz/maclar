@@ -107,17 +107,37 @@
 
             function filter() {
                 const term = normalize(searchInput.value);
-                if (!term) {
+                const tokens = term.split(/\s+/).filter(t => t.length > 0);
+
+                if (tokens.length === 0) {
                     rows.forEach(r => r.style.display = '');
                     return;
                 }
 
                 rows.forEach(row => {
-                    const cells = row.querySelectorAll('.team-cell');
-                    let text = '';
-                    cells.forEach(c => text += ' ' + c.textContent);
+                    // Aramada dikkate alınacak hücreler:
+                    // Tarih, Saat, Salon, Ev Sahibi, Misafir, Küme, Kategori
+                    const date = row.cells[0]?.textContent || '';
+                    const time = row.cells[1]?.textContent || '';
+                    const venue = row.cells[2]?.textContent || '';
+                    const home = row.cells[3]?.textContent || '';
+                    const away = row.cells[4]?.textContent || '';
+                    const league = row.cells[5]?.textContent || '';
+                    const category = row.cells[6]?.textContent || '';
 
-                    if (normalize(text).includes(term)) {
+                    const haystack = normalize(
+                        date + ' ' +
+                        time + ' ' +
+                        venue + ' ' +
+                        home + ' ' +
+                        away + ' ' +
+                        league + ' ' +
+                        category
+                    );
+
+                    const matchAllTokens = tokens.every(t => haystack.includes(t));
+
+                    if (matchAllTokens) {
                         row.style.display = '';
                     } else {
                         row.style.display = 'none';
