@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Maclar.Web")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb01f4b7aed2d8ab53b0605e19d336c5f22c9b52")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b4af044eca4ab1ca14a5f5ea4571b41b91c8dec6")]
 [assembly: System.Reflection.AssemblyProductAttribute("Maclar.Web")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Maclar.Web")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
