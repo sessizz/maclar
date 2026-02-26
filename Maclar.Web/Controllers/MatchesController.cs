@@ -7,10 +7,17 @@ namespace Maclar.Web.Controllers;
 public class MatchesController : Controller
 {
     private readonly ICachedMatchService _cachedMatchService;
+    private readonly IMatchScraperService _scraperService;
+    private readonly CachedMatchService _cacheUpdater;
 
-    public MatchesController(ICachedMatchService cachedMatchService)
+    public MatchesController(
+        ICachedMatchService cachedMatchService,
+        IMatchScraperService scraperService,
+        CachedMatchService cacheUpdater)
     {
         _cachedMatchService = cachedMatchService;
+        _scraperService = scraperService;
+        _cacheUpdater = cacheUpdater;
     }
 
     public async Task<IActionResult> Index(string? search, CancellationToken cancellationToken)
@@ -36,6 +43,16 @@ public class MatchesController : Controller
         };
 
         return View(viewModel);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
+    {
+        var matches = await _scraperService.GetMatchesAsync(cancellationToken);
+        _cacheUpdater.UpdateMatches(matches, DateTime.UtcNow);
+
+        return RedirectToAction(nameof(Index));
     }
 }
 

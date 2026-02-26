@@ -16,7 +16,12 @@ public class MatchScraperService : IMatchScraperService
 
     public async Task<IReadOnlyList<MatchDto>> GetMatchesAsync(CancellationToken cancellationToken = default)
     {
-        using var response = await _httpClient.GetAsync(MatchesUrl, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, MatchesUrl);
+        // Sitelerin basit korumalarına takılmamak için Referer ve User-Agent ayarlıyoruz.
+        request.Headers.Referrer = new Uri("https://istanbul.voleyboliltemsilciligi.com/Misafir");
+        request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var html = await response.Content.ReadAsStringAsync(cancellationToken);
