@@ -18,15 +18,17 @@
         }
     </div>
     <div class="col-md-6 text-md-end mt-3 mt-md-0">
-        <form asp-action="Index" asp-controller="Matches" method="get" class="d-inline-block me-2">
-            <input id="matchSearch" name="search" class="form-control form-control-lg" placeholder="Takım adıyla ara (ör: Fenerbahçe)" value="@Model.Search" />
-            <small class="text-muted">Yazdıkça tablo dinamik olarak filtrelenecektir.</small>
-        </form>
-        <form asp-action="Refresh" asp-controller="Matches" method="post" class="d-inline-block">
+        <form asp-action="Index" asp-controller="Matches" method="get" class="d-inline-flex justify-content-end align-items-start gap-2">
+            <div class="flex-grow-1">
+                <input id="matchSearch" name="search" class="form-control form-control-lg" placeholder="Takım adıyla ara (ör: Fenerbahçe)" value="@Model.Search" />
+                <small class="text-muted">Yazdıkça tablo dinamik olarak filtrelenecektir.</small>
+            </div>
+            <div class="mt-1">
+                <button type="submit" formaction="@Url.Action("Refresh", "Matches")" formmethod="post" class="btn btn-sm btn-outline-secondary">
+                    Verileri yenile
+                </button>
+            </div>
             @Html.AntiForgeryToken()
-            <button type="submit" class="btn btn-outline-primary btn-lg">
-                Verileri Yenile (Manuel)
-            </button>
         </form>
     </div>
 </div>
