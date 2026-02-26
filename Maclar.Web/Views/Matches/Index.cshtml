@@ -110,9 +110,22 @@
                 return (text || '').toLocaleLowerCase('tr-TR');
             }
 
+            function parseTokens(raw) {
+                const tokens = [];
+                const regex = /"([^"]+)"|(\S+)/g;
+                let match;
+                while ((match = regex.exec(raw)) !== null) {
+                    const value = match[1] || match[2];
+                    if (value) {
+                        tokens.push(normalize(value));
+                    }
+                }
+                return tokens;
+            }
+
             function filter() {
-                const term = normalize(searchInput.value);
-                const tokens = term.split(/\s+/).filter(t => t.length > 0);
+                const raw = searchInput.value || '';
+                const tokens = parseTokens(raw);
 
                 if (tokens.length === 0) {
                     rows.forEach(r => r.style.display = '');
