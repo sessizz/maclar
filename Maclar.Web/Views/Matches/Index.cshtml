@@ -1,19 +1,39 @@
-@model Maclar.Web.Models.MatchesIndexViewModel
+﻿@model Maclar.Web.Models.MatchesIndexViewModel
 
 @{
     ViewData["Title"] = "Maç Takvimi";
+
+    DateTime? istanbulLastUpdatedAt = null;
+    if (Model.LastUpdatedAt.HasValue)
+    {
+        TimeZoneInfo? istanbulTimeZone = null;
+        try
+        {
+            istanbulTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            istanbulTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Turkey Standard Time");
+        }
+
+        if (istanbulTimeZone is not null)
+        {
+            var utcDate = DateTime.SpecifyKind(Model.LastUpdatedAt.Value, DateTimeKind.Utc);
+            istanbulLastUpdatedAt = TimeZoneInfo.ConvertTimeFromUtc(utcDate, istanbulTimeZone);
+        }
+    }
 }
 
 <div class="row mb-3">
     <div class="col-md-6">
-        <h2>İstanbul Voleybol Maç Takvimi</h2>
+        <h2>Ä°stanbul Voleybol MaÃ§ Takvimi</h2>
         <p class="text-muted mb-1">
             Kaynak: <a href="https://istanbul.voleyboliltemsilciligi.com/MacTakvimi" target="_blank" rel="noopener">istanbul.voleyboliltemsilciligi.com/MacTakvimi</a>
         </p>
         @if (Model.LastUpdatedAt.HasValue)
         {
             <p class="text-muted mb-0">
-                Son güncelleme (UTC): @Model.LastUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm")
+                Son gÃ¼ncelleme (İstanbul): @(istanbulLastUpdatedAt?.ToString("dd.MM.yyyy HH:mm") ?? Model.LastUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm"))
             </p>
         }
     </div>
@@ -24,9 +44,9 @@
                        name="search"
                        class="form-control form-control-lg"
                        placeholder="Arama"
-                       title="Takım adı, tarih, salon, küme ve kategori alanlarında aynı anda arama yapabilirsiniz. Örnek: 'fener mdk 22.12 beylikdüzü'"
+                       title="TakÄ±m adÄ±, tarih, salon, kÃ¼me ve kategori alanlarÄ±nda aynÄ± anda arama yapabilirsiniz. Ã–rnek: 'fener mdk 22.12 beylikdÃ¼zÃ¼'"
                        value="@Model.Search" />
-                <small class="text-muted">Birden fazla kelimeyle (takım, tarih, salon, küme, kategori) aynı anda arama yapabilirsiniz.</small>
+                <small class="text-muted">Birden fazla kelimeyle (takÄ±m, tarih, salon, kÃ¼me, kategori) aynÄ± anda arama yapabilirsiniz.</small>
             </div>
             <div class="mt-1">
                 <button type="submit" formaction="@Url.Action("Refresh", "Matches")" formmethod="post" class="btn btn-sm btn-outline-secondary">
@@ -54,9 +74,9 @@
                 <th>Salon</th>
                 <th>Ev Sahibi</th>
                 <th>Misafir</th>
-                <th>Küme</th>
+                <th>KÃ¼me</th>
                 <th>Kategori</th>
-                <th>Set Sonuçları</th>
+                <th>Set SonuÃ§larÄ±</th>
             </tr>
         </thead>
         <tbody>
@@ -133,8 +153,8 @@
                 }
 
                 rows.forEach(row => {
-                    // Aramada dikkate alınacak hücreler:
-                    // Tarih, Saat, Salon, Ev Sahibi, Misafir, Küme, Kategori
+                    // Aramada dikkate alÄ±nacak hÃ¼creler:
+                    // Tarih, Saat, Salon, Ev Sahibi, Misafir, KÃ¼me, Kategori
                     const date = row.cells[0]?.textContent || '';
                     const time = row.cells[1]?.textContent || '';
                     const venue = row.cells[2]?.textContent || '';
@@ -167,5 +187,7 @@
         })();
     </script>
 }
+
+
 
 
