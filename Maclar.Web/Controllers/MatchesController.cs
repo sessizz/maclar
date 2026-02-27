@@ -24,6 +24,28 @@ public class MatchesController : Controller
     {
         var (matches, lastUpdatedAt, errorMessage) = await _cachedMatchService.GetCurrentMatchesAsync(cancellationToken);
 
+        // Eğer cache boşsa veya hiç güncellenmemişse, kullanıcı boş sayfa görmesin diye
+        // bir defaya mahsus doğrudan scraper'dan veri çekmeyi deniyoruz.
+        if ((matches == null || matches.Count == 0) && !cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var fresh = await _scraperService.GetMatchesAsync(cancellationToken);
+                if (fresh.Count > 0)
+                {
+                    matches = fresh;
+                    lastUpdatedAt ??= DateTime.UtcNow;
+                    _cacheUpdater.UpdateMatches(fresh, lastUpdatedAt.Value);
+                    errorMessage = null;
+                }
+            }
+            catch (Exception)
+            {
+                // Arka plandaki hata mesajını bozmadan sadece boş liste durumunda
+                // kullanıcıya yansıtılmasını sağlıyoruz.
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
