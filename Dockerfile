@@ -2,17 +2,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Tüm repo içeriğini kopyala
-COPY . .
+# Restore katmanının cache'lenebilmesi için önce proje dosyasını kopyala
+COPY Maclar.Web/Maclar.Web.csproj Maclar.Web/
+RUN dotnet restore Maclar.Web/Maclar.Web.csproj
 
-# Proje klasörüne geç
+# Ardından kaynak kodu kopyalayıp publish et
+COPY Maclar.Web/ Maclar.Web/
 WORKDIR /src/Maclar.Web
-
-# (İsteğe bağlı ama faydalı) restore
-RUN dotnet restore Maclar.Web.csproj
-
-# Projeyi publish et - PROJEYİ AÇIKÇA BELİRTİYORUZ
-RUN dotnet publish Maclar.Web.csproj -c Release -o /app/publish
+RUN dotnet publish Maclar.Web.csproj -c Release -o /app/publish --no-restore
 
 # RUNTIME aşaması
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
@@ -20,7 +17,9 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Railway'in PORT env değişkenini kullan
-ENV ASPNETCORE_URLS=http://0.0.0.0:${PORT}
+# Coolify/Railway gibi platformlar PORT değerini runtime'da verebilir.
+# PORT verilmezse ASP.NET Core varsayılan olarak 8080 portunu dinler.
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Maclar.Web.dll"]
