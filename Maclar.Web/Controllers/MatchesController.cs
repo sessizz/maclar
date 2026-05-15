@@ -1,3 +1,4 @@
+using System.Globalization;
 using Maclar.Web.Models;
 using Maclar.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,6 +7,8 @@ namespace Maclar.Web.Controllers;
 
 public class MatchesController : Controller
 {
+    private static readonly CultureInfo TurkishCulture = new("tr-TR");
+
     private readonly ICachedMatchService _cachedMatchService;
     private readonly IMatchScraperService _scraperService;
     private readonly CachedMatchService _cacheUpdater;
@@ -48,11 +51,9 @@ public class MatchesController : Controller
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim();
+            var tokens = ParseSearchTokens(search);
             matches = matches
-                .Where(m =>
-                    (!string.IsNullOrEmpty(m.HomeTeam) && m.HomeTeam.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(m.AwayTeam) && m.AwayTeam.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                .Where(m => tokens.All(token => GetSearchableText(m).Contains(token, StringComparison.Ordinal)))
                 .ToList();
         }
 
@@ -65,6 +66,27 @@ public class MatchesController : Controller
         };
 
         return View(viewModel);
+    }
+
+    private static IReadOnlyList<string> ParseSearchTokens(string search)
+    {
+        return search
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(token => token.ToLower(TurkishCulture))
+            .ToList();
+    }
+
+    private static string GetSearchableText(MatchDto match)
+    {
+        return string.Join(' ',
+            match.Date?.ToString("dd.MM.yyyy") ?? match.RawDateText,
+            match.Venue,
+            match.HomeTeam,
+            match.AwayTeam,
+            match.League,
+            match.CategoryCode,
+            match.CategoryDescription)
+            .ToLower(TurkishCulture);
     }
 
     [HttpPost]
