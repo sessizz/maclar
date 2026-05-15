@@ -154,9 +154,8 @@
 
                 rows.forEach(row => {
                     // Aramada dikkate alınacak hücreler:
-                    // Tarih, Saat, Salon, Ev Sahibi, Misafir, Küme, Kategori
+                    // Tarih, Salon, Ev Sahibi, Misafir, Küme, Kategori
                     const date = row.cells[0]?.textContent || '';
-                    const time = row.cells[1]?.textContent || '';
                     const venue = row.cells[2]?.textContent || '';
                     const home = row.cells[3]?.textContent || '';
                     const away = row.cells[4]?.textContent || '';
@@ -165,7 +164,6 @@
 
                     const haystack = normalize(
                         date + ' ' +
-                        time + ' ' +
                         venue + ' ' +
                         home + ' ' +
                         away + ' ' +

@@ -29,7 +29,7 @@ public class MatchScraperService : IMatchScraperService
         var htmlDoc = new HtmlDocument();
         htmlDoc.LoadHtml(html);
 
-        // Sayfadaki ana tabloyu bulmaya çalışıyoruz; ilerde ihtiyaç olursa daha spesifik bir selector kullanılabilir.
+        // Sayfadaki ana tabloyu bulmaya çalışıyoruz; ileride ihtiyaç olursa daha spesifik bir selector kullanılabilir.
         var table = htmlDoc.DocumentNode.SelectSingleNode("//table");
         if (table is null)
         {
