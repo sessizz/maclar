@@ -73,11 +73,11 @@
                                 <span class="badges">
                                     @if (league.Length > 0)
                                     {
-                                        <span class="badge badge-outline">@league</span>
+                                        <span class="badge badge-outline" title="@(match.Competition ?? league)">@league</span>
                                     }
                                     @if (!string.IsNullOrWhiteSpace(match.CategoryCode))
                                     {
-                                        <span class="badge badge-secondary" title="Kategori">@match.CategoryCode</span>
+                                        <span class="badge badge-secondary" title="@(match.CategoryDescription ?? "Kategori")">@match.CategoryCode</span>
                                     }
                                 </span>
                             </td>

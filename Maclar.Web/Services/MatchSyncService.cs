@@ -1,3 +1,5 @@
+using Maclar.Web.Models;
+
 namespace Maclar.Web.Services;
 
 /// <summary>
@@ -28,6 +30,31 @@ public class MatchSyncService
         _cache = cache;
         _notifier = notifier;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Arşivden (PuanDurumu) gelen maçları veritabanına yazar ve cache'i yeniler.
+    /// Tarama dakikalar sürdüğü için kilit dışında yapılır; sadece kayıt ve cache yenileme kilitli.
+    /// Değişiklik bildirimi gönderilmez.
+    /// </summary>
+    public async Task<(int Added, int Updated)> SaveArchiveAsync(IReadOnlyList<MatchDto> matches, CancellationToken cancellationToken = default)
+    {
+        await _syncLock.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await _store.SaveArchiveAsync(matches, DateTime.UtcNow, cancellationToken);
+            var (all, _) = await _store.GetAllAsync(cancellationToken);
+            _cache.ReplaceMatches(all);
+
+            _logger.LogInformation(
+                "Arşiv kaydedildi. Yeni: {Added}, güncellenen: {Updated}, veritabanında toplam: {Total}.",
+                result.Added, result.Updated, all.Count);
+            return result;
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
     }
 
     /// <summary>

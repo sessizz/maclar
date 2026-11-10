@@ -34,6 +34,8 @@ Maclar.Web/
     MatchRefreshBackgroundService.cs                   # Açılışta DB'den yükler, sonra her N dakikada senkronize eder
     MatchChangeNotifier.cs  # Senkronizasyon farklarından bildirim metni üretir
     TelegramNotifier.cs     # Telegram Bot API sendMessage
+    ArchiveScraperService.cs          # PuanDurumu sayfasını (WebForms postback zinciri) gezip geçmiş maçları toplar
+    ArchiveRefreshBackgroundService.cs # Arşivi günde bir tarar (son tarama zamanı DB'den)
     RateLimitPolicies.cs    # Rate limit sabitleri
     IstanbulClock.cs        # İstanbul saat dilimi: Now, Today, FromUtc
   Models/
@@ -81,8 +83,11 @@ Akış:
    `/?search=...`'e dönülür.
 
 Tekillik ve güncelleme kuralları (`MatchStore`):
-- Maç anahtarı (`MatchKey`, UNIQUE): **tarih + ev sahibi + misafir + küme + kategori**,
-  `tr-TR` küçük harf, fazla boşluklar temizlenmiş.
+- Maç anahtarı (`MatchKey`, UNIQUE): **tarih + ev sahibi + misafir + kategori**,
+  `tr-TR` küçük harf, fazla boşluklar temizlenmiş. Küme anahtarda **yok**: takvim ve arşiv
+  sayfaları aynı küme için farklı kod kullanıyor ("2LK" / "MDK1L"), kategori kodları aynı.
+- Şema sürümü `PRAGMA user_version` ile tutulur (`MatchStore.Initialize`); yeni geçişi
+  `MigrateToV{n}` olarak ekle. v1: `Competition`, `ArchiveSeenAt` sütunları + anahtar yenileme.
 - Anahtar zaten varsa yeni satır eklenmez; sadece saat, salon, set skorları,
   set sayıları, `IsFinished` ve `LastSeenAt` güncellenir. Boş gelen değer dolu
   eski değerin üstüne yazılmaz (`COALESCE`/`NULLIF`).
@@ -95,6 +100,29 @@ Tekillik ve güncelleme kuralları (`MatchStore`):
   **Salonlar** (`/salonlar`) salon başına yaklaşan/toplam maç, ilk yaklaşan ve son oynanan
   tarih; salona tıklayınca `/?search=<salon>` açılır. "Bugün" = `IstanbulClock.Today`.
 - Gruplama ve sıralama `MatchesController.BuildList`'te; DB zaten tarih+saat artan döner.
+
+## Arşiv (PuanDurumu)
+
+Maç takvimi sayfası sadece yakın tarihli maçları gösterir. Geçmiş maçlar ve skorlar
+`https://istanbul.voleyboliltemsilciligi.com/PuanDurumu` sayfasından alınır.
+
+- Sayfa ASP.NET WebForms: her açılır liste seçimi `__VIEWSTATE` ile sayfayı yeniden gönderir.
+  Zincir `ddlsbe` (cinsiyet) -> `ddlSkategori` -> `ddlskume` -> `ddlSyarismaadi`; maçlar
+  `icerik_gvmusabakaliste` tablosunda, hücreler `span` id son ekiyle (`gtarih`, `gsaat`, `gyer`,
+  `gevsahibi`, `gseta`, `gsetb`, `gmisafir`, `gsetsonuclari`).
+- Tam tarama ~154 istek, ~133 yarışma/grup sayfası; istekler arası `Archive:RequestDelayMs`
+  (varsayılan 800 ms). Günde bir kez (`Archive:RefreshHours`, varsayılan 24); son tarama zamanı
+  `MAX(ArchiveSeenAt)`, yani deploy'lar yeniden taramaya yol açmaz. Başarısız tarama 1 saat sonra.
+- Sadece gençler (Genç/Küçük/Midi/Yıldız) var; büyükler (BYK) bu sayfada yok.
+- Tarihi olmayan fikstür satırları alınmaz. "(H) - Takım" hükmen demek: önek takımdan silinir,
+  skora "Hükmen: " eklenir.
+- Arşiv kaydı (`SaveArchiveAsync`) skor/set/yarışma adını günceller, takvimden gelmiş saat ve
+  salonu korur, **LastSeenAt'e dokunmaz**. Takvimde hiç görülmemiş kayıtlarda
+  `LastSeenAt = MatchStore.NeverSeenOnCalendar` (DateTime.MinValue). Değişiklik tespiti ve
+  Telegram bildirimi sadece takvimde görülmüş kayıtlara göre yapılır; arşiv bildirim üretmez.
+- Arşivde salon adları kısa ("50. Yıl Deniz Esinduy"), takvimde uzun; Salonlar sayfasında
+  aynı salon iki satır görünebilir. Takım adları iki sayfada farklı yazılırsa aynı maç iki
+  kayıt olur (bilinen sınır).
 
 ## Değişiklik bildirimi (Telegram)
 
@@ -212,6 +240,10 @@ uygulamayı açıp tabloyu, aramayı ve "Verileri yenile" butonunu kontrol et.
 | `Telegram:BotToken` | — | Bot token. Env: `Telegram__BotToken`. Gizli; repoya koyma. |
 | `Telegram:ChatId` | — | Bildirimin gideceği sohbet/grup id'si. Env: `Telegram__ChatId`. |
 | `Telegram:StartupMessage` | `true` | Açılışta (ilk senkronizasyondan sonra) Telegram'a durum mesajı: DB'den yüklenen sayı + ilk senkronizasyon sonucu. Env: `Telegram__StartupMessage`. |
+| `Archive:Enabled` | `true` | Arşiv taraması. Env: `Archive__Enabled`. |
+| `Archive:RefreshHours` | `24` | Arşiv tarama aralığı (saat). |
+| `Archive:RequestDelayMs` | `800` | Arşiv taramasında istekler arası bekleme. |
+| `Archive:StartupDelaySeconds` | `60` | Açılıştan sonra ilk kontrol için bekleme. |
 | `ConnectionStrings:Matches` | `Data Source=data/maclar.db` | SQLite bağlantısı. Env: `ConnectionStrings__Matches`. |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:8080` (Docker) | Dinlenen adres. |
 

@@ -31,6 +31,11 @@ public class MatchDto
     /// </summary>
     public string? CategoryDescription { get; set; }
 
+    /// <summary>
+    /// Arşivden (PuanDurumu) gelen maçlarda yarışma / grup adı (örn. "Midi Kızlar 1. Lig 2. Bölge A Grubu").
+    /// </summary>
+    public string? Competition { get; set; }
+
     public int? HomeSets { get; set; }
     public int? AwaySets { get; set; }
 

@@ -172,7 +172,7 @@ tr.group td { padding: 8px 16px; background: var(--muted); }
 .c-venue { width: 34%; color: var(--muted-foreground); }
 .ico-text { display: inline-flex; gap: 6px; align-items: flex-start; }
 .ico-text .icon { width: 14px; height: 14px; margin-top: 3px; }
-.c-score { width: 70px; text-align: right; }
+.c-score { width: 80px; text-align: right; white-space: nowrap; }
 .score { font-weight: 600; }
 .c-num { width: 130px; text-align: right; }
 .row-link { text-decoration: none; font-weight: 500; }

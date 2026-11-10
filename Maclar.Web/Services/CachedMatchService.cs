@@ -28,6 +28,18 @@ public class CachedMatchService : ICachedMatchService
         }
     }
 
+    /// <summary>
+    /// Listeyi değiştirir ama "son güncelleme" zamanına ve hata mesajına dokunmaz
+    /// (arşiv taraması takvim güncellemesi sayılmaz).
+    /// </summary>
+    public void ReplaceMatches(IReadOnlyList<MatchDto> matches)
+    {
+        lock (_lock)
+        {
+            _matches = matches;
+        }
+    }
+
     public void SetError(string errorMessage)
     {
         lock (_lock)

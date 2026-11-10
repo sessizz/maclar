@@ -90,6 +90,7 @@ public static class MatchFormat
                 match.League,
                 League(match.League),
                 match.CategoryCode,
-                match.CategoryDescription)
+                match.CategoryDescription,
+                match.Competition)
             .ToLower(Turkish);
 }
