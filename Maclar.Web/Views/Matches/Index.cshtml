@@ -48,7 +48,10 @@
                        value="@Model.Search" />
                 <small class="text-muted">Birden fazla kelimeyle (takım, tarih, salon, küme, kategori) aynı anda arama yapabilirsiniz.</small>
             </div>
-            <div class="mt-1">
+            <div class="mt-1 d-flex flex-column gap-1">
+                <button type="button" id="scrollToToday" class="btn btn-sm btn-outline-primary">
+                    Bugüne git
+                </button>
                 <button type="submit" formaction="@Url.Action("Refresh", "Matches")" formmethod="post" class="btn btn-sm btn-outline-secondary">
                     Verileri yenile
                 </button>
@@ -89,7 +92,7 @@
         <tbody>
         @foreach (var match in Model.Matches)
         {
-            <tr>
+            <tr data-date="@match.Date?.ToString("yyyy-MM-dd")">
                 <td>@(match.Date?.ToString("dd.MM.yyyy") ?? match.RawDateText)</td>
                 <td>@(match.Time?.ToString(@"hh\:mm") ?? match.RawTimeText)</td>
                 <td>@match.Venue</td>
@@ -214,8 +217,35 @@
                 e.preventDefault();
             });
 
-            // Sayfa ?search= ile açıldıysa ilk filtrelemeyi hemen yap.
+            // Bugünün tarihi (İstanbul saatine göre) yyyy-MM-dd biçiminde; data-date ile karşılaştırılır.
+            const today = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date());
+
+            rows.forEach(row => {
+                if (row.dataset.date === today) {
+                    row.classList.add('table-info');
+                }
+            });
+
+            // Liste eskiden yeniye sıralı; görünen satırlardan bugün veya sonrasındaki ilk maça kaydır.
+            // Hiç yoksa (hepsi geçmişte) en son maça kaydır.
+            function scrollToToday() {
+                const visible = rows.filter(r => r.style.display !== 'none');
+                if (visible.length === 0) {
+                    return;
+                }
+
+                const target = visible.find(r => r.dataset.date && r.dataset.date >= today)
+                    || visible[visible.length - 1];
+                target.scrollIntoView({ block: 'start' });
+            }
+
+            document.getElementById('scrollToToday')?.addEventListener('click', scrollToToday);
+
+            // Sayfa ?search= ile açıldıysa ilk filtrelemeyi hemen yap, sonra bugüne kaydır.
             filter();
+            scrollToToday();
         })();
     </script>
 }

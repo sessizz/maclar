@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Workstation GC: Server GC'ye göre belirgin şekilde daha az bellek kullanır; bu trafik için yeterli. -->
+    <ServerGarbageCollector>false</ServerGarbageCollector>
   </PropertyGroup>
 
   <ItemGroup>

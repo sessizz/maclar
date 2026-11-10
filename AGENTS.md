@@ -30,6 +30,8 @@ Maclar.Web/
     MatchSyncService.cs     # Çek -> DB'ye yaz -> cache'i DB'den yenile. Tüm yenilemeler buradan geçer
     ICachedMatchService.cs  / CachedMatchService.cs    # Bellek içi (in-memory) singleton cache (DB'nin kopyası)
     MatchRefreshBackgroundService.cs                   # Açılışta DB'den yükler, sonra her N dakikada senkronize eder
+    MatchChangeNotifier.cs  # Senkronizasyon farklarından bildirim metni üretir
+    TelegramNotifier.cs     # Telegram Bot API sendMessage
     RateLimitPolicies.cs    # Rate limit sabitleri
   Models/
     MatchDto.cs             # Tek maç kaydı
@@ -47,6 +49,9 @@ Kalıcı kaynak **SQLite veritabanıdır**; bellek içi cache onun kopyasıdır.
   `/app/data/maclar.db`. `data/` git'e ve Docker build context'ine dahil değil.
 - **Docker'da `/app/data` kalıcı volume olmalı** (Coolify: Persistent Storage).
   Olmazsa her deploy'da veritabanı sıfırlanır.
+- Data Protection anahtarları da `data/keys` altında tutulur (antiforgery ve
+  TempData cookie'leri bunlarla şifrelenir). Kalıcı olmazsa her deploy sonrası
+  açık kalan sayfalardaki "Verileri yenile" 400 verir.
 - Tablo uygulama açılışında `MatchStore.Initialize()` ile oluşturulur
   (`CREATE TABLE IF NOT EXISTS`). Migration sistemi yok; şema değişikliğinde
   `Initialize()` içine geriye uyumlu `ALTER TABLE` ekle, var olan veriyi silme.
@@ -73,7 +78,29 @@ Tekillik ve güncelleme kuralları (`MatchStore`):
   `LastSeenAt` sitede en son görüldüğü zamanı tutar; `FirstSeenAt` ilk eklenme.
 - Bilinen sınır: bir maçın tarihi, takım adı, küme veya kategorisi sitede
   değişirse yeni kayıt oluşur, eskisi de kalır.
-- Liste sırası: tarih azalan (en yeni üstte), gün içinde saat artan.
+- Liste sırası: eskiden yeniye (tarih, sonra saat artan). Sayfa açılınca istemci
+  bugün veya sonrasındaki ilk maça kaydırır, bugünün satırları vurgulanır
+  ("Bugüne git" butonu aynı işi yapar). Bugün = `Europe/Istanbul` tarihine göre,
+  satırlardaki `data-date="yyyy-MM-dd"` ile karşılaştırılır.
+
+## Değişiklik bildirimi (Telegram)
+
+`MatchStore.SaveAsync` her senkronizasyonda bir öncekine göre farkları döner
+(`MatchSaveResult`: yeni, saat/salon değişen, kaybolan). "Önceki senkronizasyonda
+görülen" = `LastSeenAt` değeri en büyük olan kayıtlar. `MatchChangeNotifier`
+bunlardan mesaj üretir, `TelegramNotifier` gönderir:
+
+- **Tarihi değişen:** kaybolan bir maç ile aynı ev sahibi + misafir + küme +
+  kategoride yeni gelen maç eşleşirse (`MatchStore.BuildFixtureKey`).
+- **Saati / salonu değişen:** aynı anahtarlı maçta saat veya salon farklı (bugün ve sonrası).
+- **Siteden kaldırılan:** eşleşmeyen kaybolan maç, tarihi bugün veya sonrası.
+- Bildirilmeyenler: ilk senkronizasyon, boş çekim, yeni fikstürler, oynanmış
+  eski maçların siteden düşmesi. 30'dan fazla maç birden kaybolursa tek bir
+  "olağandışı değişiklik" uyarısı gider (site/scraper bozulmuş olabilir).
+- Tarihi değişen maçta eski tarihli kayıt DB'de kalır (listede iki satır görünür).
+- Bildirim hatası senkronizasyonu bozmaz. Telegram yapılandırılmamışsa mesaj log'a yazılır.
+- **Güvenlik:** bot token istek URL'sinde. Telegram HttpClient'ında
+  `RemoveAllLoggers()` bu yüzden var; kaldırma, URL'yi asla log'a yazma.
 
 ## Rate limiting (flood koruması)
 
@@ -154,6 +181,8 @@ uygulamayı açıp tabloyu, aramayı ve "Verileri yenile" butonunu kontrol et.
 | Anahtar | Varsayılan | Açıklama |
 |---|---|---|
 | `Matches:RefreshMinutes` | 60 | Background yenileme aralığı (dakika). `appsettings.json`'da tanımlı değil; env ile `Matches__RefreshMinutes` verilebilir. |
+| `Telegram:BotToken` | — | Bot token. Env: `Telegram__BotToken`. Gizli; repoya koyma. |
+| `Telegram:ChatId` | — | Bildirimin gideceği sohbet/grup id'si. Env: `Telegram__ChatId`. |
 | `ConnectionStrings:Matches` | `Data Source=data/maclar.db` | SQLite bağlantısı. Env: `ConnectionStrings__Matches`. |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:8080` (Docker) | Dinlenen adres. |
 

@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Maclar.Web.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
@@ -8,11 +9,25 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+// Antiforgery ve TempData cookie'leri Data Protection anahtarlarıyla şifrelenir. Anahtarlar varsayılan
+// olarak container içinde (/root/.aspnet) tutulur ve her deploy'da kaybolur; bu da eski sayfadaki
+// formların 400 vermesine yol açar. Anahtarları veritabanıyla aynı kalıcı volume'de (data/keys) tutuyoruz.
+builder.Services.AddDataProtection()
+    .SetApplicationName("Maclar.Web")
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "keys")));
+
 builder.Services.AddHttpClient<IMatchScraperService, MatchScraperService>();
 builder.Services.AddSingleton<CachedMatchService>();
 builder.Services.AddSingleton<ICachedMatchService>(sp => sp.GetRequiredService<CachedMatchService>());
 builder.Services.AddSingleton<MatchStore>();
 builder.Services.AddSingleton<MatchSyncService>();
+builder.Services.AddSingleton<MatchChangeNotifier>();
+// Bot token istek URL'sinde olduğu için HttpClient'ın varsayılan istek log'ları kapatılıyor
+// (aksi halde "Start processing HTTP request POST https://api.telegram.org/bot<TOKEN>/..." log'a düşer).
+builder.Services.AddHttpClient(nameof(TelegramNotifier)).RemoveAllLoggers();
+builder.Services.AddSingleton<TelegramNotifier>(sp =>
+    ActivatorUtilities.CreateInstance<TelegramNotifier>(
+        sp, sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(TelegramNotifier))));
 builder.Services.AddHostedService<MatchRefreshBackgroundService>();
 
 // Uygulama Coolify (Traefik) reverse proxy'sinin arkasında çalışıyor. Gerçek istemci IP'sini

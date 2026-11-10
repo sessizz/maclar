@@ -76,14 +76,22 @@ public class MatchStore
     /// <summary>
     /// Maçları kaydeder. Aynı maç (bkz. <see cref="BuildMatchKey"/>) zaten varsa yeni kayıt
     /// eklenmez; sadece saat, salon ve skor gibi değişebilen alanları güncellenir.
+    /// Dönen sonuç, bir önceki senkronizasyona göre farkları (yeni, değişen, kaybolan) içerir.
     /// </summary>
-    /// <returns>Yeni eklenen maç sayısı.</returns>
-    public async Task<int> SaveAsync(IReadOnlyList<MatchDto> matches, DateTime seenAtUtc, CancellationToken cancellationToken = default)
+    public async Task<MatchSaveResult> SaveAsync(IReadOnlyList<MatchDto> matches, DateTime seenAtUtc, CancellationToken cancellationToken = default)
     {
         await using var connection = Open();
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
-        var countBefore = await CountAsync(connection, transaction, cancellationToken);
+        // Değişiklik tespiti için mevcut kayıtları al. Veri küçük (binler mertebesi), tamamını okumak sorun değil.
+        var existing = new Dictionary<string, StoredMatch>();
+        foreach (var stored in await ReadAllAsync(connection, transaction, cancellationToken))
+        {
+            existing[stored.Key] = stored;
+        }
+
+        // Bir önceki senkronizasyonda sitede görülen kayıtlar = LastSeenAt'i en büyük olanlar.
+        DateTime? previousSeenAt = existing.Count == 0 ? null : existing.Values.Max(s => s.LastSeenAt);
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -124,9 +132,31 @@ public class MatchStore
         var isFinished = command.Parameters.Add("$isFinished", SqliteType.Integer);
         command.Parameters.AddWithValue("$seenAt", seenAtUtc.ToString("O", CultureInfo.InvariantCulture));
 
+        var currentKeys = new HashSet<string>();
+        var added = new List<MatchDto>();
+        var changed = new List<MatchChange>();
+
         foreach (var match in matches)
         {
-            key.Value = BuildMatchKey(match);
+            var matchKey = BuildMatchKey(match);
+
+            // Aynı çekimde aynı maç iki kez gelirse farkı bir kez hesapla.
+            if (currentKeys.Add(matchKey))
+            {
+                if (existing.TryGetValue(matchKey, out var old))
+                {
+                    if (HasTimeOrVenueChanged(old.Match, match))
+                    {
+                        changed.Add(new MatchChange(old.Match, match));
+                    }
+                }
+                else
+                {
+                    added.Add(match);
+                }
+            }
+
+            key.Value = matchKey;
             date.Value = Db(match.Date?.ToString(DateFormat, CultureInfo.InvariantCulture));
             rawDate.Value = Db(match.RawDateText);
             time.Value = Db(match.Time?.ToString(TimeFormat, CultureInfo.InvariantCulture));
@@ -145,33 +175,52 @@ public class MatchStore
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        var countAfter = await CountAsync(connection, transaction, cancellationToken);
+        // Önceki senkronizasyonda sitede olup bu sefer gelmeyenler.
+        var disappeared = previousSeenAt is null
+            ? new List<MatchDto>()
+            : existing.Values
+                .Where(s => s.LastSeenAt == previousSeenAt && !currentKeys.Contains(s.Key))
+                .Select(s => s.Match)
+                .ToList();
+
         await transaction.CommitAsync(cancellationToken);
 
-        return (int)(countAfter - countBefore);
+        return new MatchSaveResult(
+            IsFirstSync: existing.Count == 0,
+            Added: added,
+            Changed: changed,
+            Disappeared: disappeared);
     }
 
     /// <summary>
-    /// Tüm maçları döner: en yeni tarih en üstte, gün içinde saate göre artan.
+    /// Tüm maçları döner: eskiden yeniye (tarih, sonra saat artan).
     /// </summary>
     public async Task<(IReadOnlyList<MatchDto> Matches, DateTime? LastSeenAtUtc)> GetAllAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = Open();
+        var all = await ReadAllAsync(connection, null, cancellationToken);
+        DateTime? lastSeenAt = all.Count == 0 ? null : all.Max(s => s.LastSeenAt);
+        return (all.Select(s => s.Match).ToList(), lastSeenAt);
+    }
+
+    private static async Task<List<StoredMatch>> ReadAllAsync(
+        SqliteConnection connection, SqliteTransaction? transaction, CancellationToken cancellationToken)
+    {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             SELECT Date, RawDateText, Time, RawTimeText, Venue, HomeTeam, AwayTeam, SetScores,
-                   League, CategoryCode, CategoryDescription, HomeSets, AwaySets, IsFinished, LastSeenAt
+                   League, CategoryCode, CategoryDescription, HomeSets, AwaySets, IsFinished, LastSeenAt, MatchKey
             FROM Matches
-            ORDER BY Date IS NULL, Date DESC, Time IS NULL, Time, Id;
+            ORDER BY Date IS NULL, Date, Time IS NULL, Time, Id;
             """;
 
-        var matches = new List<MatchDto>();
-        DateTime? lastSeenAt = null;
+        var result = new List<StoredMatch>();
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            matches.Add(new MatchDto
+            var match = new MatchDto
             {
                 Date = reader.IsDBNull(0) ? null : DateTime.ParseExact(reader.GetString(0), DateFormat, CultureInfo.InvariantCulture),
                 RawDateText = GetString(reader, 1),
@@ -187,17 +236,38 @@ public class MatchStore
                 HomeSets = reader.IsDBNull(11) ? null : reader.GetInt32(11),
                 AwaySets = reader.IsDBNull(12) ? null : reader.GetInt32(12),
                 IsFinished = reader.IsDBNull(13) ? null : reader.GetInt32(13) != 0,
-            });
+            };
 
-            var seen = DateTime.Parse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-            if (lastSeenAt is null || seen > lastSeenAt)
-            {
-                lastSeenAt = seen;
-            }
+            var lastSeenAt = DateTime.Parse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            result.Add(new StoredMatch(reader.GetString(15), match, lastSeenAt));
         }
 
-        return (matches, lastSeenAt);
+        return result;
     }
+
+    /// <summary>
+    /// Saat veya salon değişti mi? Yeni değer boşsa değişiklik sayılmaz (kayıtta da eskisi korunur).
+    /// </summary>
+    private static bool HasTimeOrVenueChanged(MatchDto old, MatchDto current)
+    {
+        var timeChanged = current.Time.HasValue && old.Time.HasValue && current.Time != old.Time;
+        var venueChanged = !string.IsNullOrWhiteSpace(current.Venue)
+            && !string.IsNullOrWhiteSpace(old.Venue)
+            && Normalize(current.Venue) != Normalize(old.Venue);
+        return timeChanged || venueChanged;
+    }
+
+    /// <summary>
+    /// Takım/küme/kategori aynı ama tarihi farklı olabilecek maçları eşleştirmek için (erteleme tespiti).
+    /// </summary>
+    public static string BuildFixtureKey(MatchDto match) =>
+        string.Join('|',
+            Normalize(match.HomeTeam),
+            Normalize(match.AwayTeam),
+            Normalize(match.League),
+            Normalize(match.CategoryCode));
+
+    private sealed record StoredMatch(string Key, MatchDto Match, DateTime LastSeenAt);
 
     /// <summary>
     /// Bir maçı tekil tanımlayan anahtar: tarih + ev sahibi + misafir + küme + kategori.
@@ -231,14 +301,6 @@ public class MatchStore
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         return connection;
-    }
-
-    private static async Task<long> CountAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "SELECT COUNT(*) FROM Matches;";
-        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     private static object Db(string? value) => string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;

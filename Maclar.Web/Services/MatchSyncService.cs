@@ -10,6 +10,7 @@ public class MatchSyncService
     private readonly IMatchScraperService _scraperService;
     private readonly MatchStore _store;
     private readonly CachedMatchService _cache;
+    private readonly MatchChangeNotifier _notifier;
     private readonly ILogger<MatchSyncService> _logger;
 
     // Aynı anda birden fazla senkronizasyon çalışmasın (background + elle yenileme).
@@ -19,11 +20,13 @@ public class MatchSyncService
         IMatchScraperService scraperService,
         MatchStore store,
         CachedMatchService cache,
+        MatchChangeNotifier notifier,
         ILogger<MatchSyncService> logger)
     {
         _scraperService = scraperService;
         _store = store;
         _cache = cache;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -52,14 +55,25 @@ public class MatchSyncService
         {
             var scraped = await _scraperService.GetMatchesAsync(cancellationToken);
             var now = DateTime.UtcNow;
-            var added = await _store.SaveAsync(scraped, now, cancellationToken);
+            var result = await _store.SaveAsync(scraped, now, cancellationToken);
 
             var (all, _) = await _store.GetAllAsync(cancellationToken);
             _cache.UpdateMatches(all, now);
 
             _logger.LogInformation(
-                "Maçlar senkronize edildi. Sitede: {Scraped}, yeni eklenen: {Added}, veritabanında toplam: {Total}.",
-                scraped.Count, added, all.Count);
+                "Maçlar senkronize edildi. Sitede: {Scraped}, yeni: {Added}, saat/salon değişen: {Changed}, " +
+                "siteden kaybolan: {Disappeared}, veritabanında toplam: {Total}.",
+                scraped.Count, result.Added.Count, result.Changed.Count, result.Disappeared.Count, all.Count);
+
+            // Bildirim hatası senkronizasyonu bozmasın.
+            try
+            {
+                await _notifier.NotifyAsync(result, scraped.Count, cancellationToken);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Değişiklik bildirimi hazırlanırken hata oluştu.");
+            }
         }
         finally
         {

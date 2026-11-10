@@ -22,9 +22,8 @@ COPY --from=build /app/publish .
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
-# Coolify/Railway gibi platformlar PORT değerini runtime'da verebilir.
-# PORT verilmezse ASP.NET Core varsayılan olarak 8080 portunu dinler.
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+# aspnet:8.0 imajı ASPNETCORE_HTTP_PORTS=8080 ile gelir; ayrıca ASPNETCORE_URLS vermek
+# "Overriding HTTP_PORTS" uyarısına yol açıyordu.
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Maclar.Web.dll"]
