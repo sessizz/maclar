@@ -17,6 +17,11 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
+# SQLite veritabanı /app/data/maclar.db içinde tutulur. Container yeniden oluşturulunca
+# verinin kaybolmaması için bu klasör kalıcı volume olarak bağlanmalı (Coolify: Persistent Storage -> /app/data).
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
 # Coolify/Railway gibi platformlar PORT değerini runtime'da verebilir.
 # PORT verilmezse ASP.NET Core varsayılan olarak 8080 portunu dinler.
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080

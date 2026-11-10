@@ -58,6 +58,13 @@
     </div>
 </div>
 
+@if (TempData["RefreshMessage"] is string refreshMessage)
+{
+    <div class="alert alert-info">
+        @refreshMessage
+    </div>
+}
+
 @if (!string.IsNullOrEmpty(Model.ErrorMessage))
 {
     <div class="alert alert-warning">
@@ -181,7 +188,34 @@
                 });
             }
 
-            searchInput.addEventListener('input', filter);
+            // Adres çubuğundaki ?search= değerini kutuyla senkron tut; böylece link paylaşılabilir
+            // ve sayfa yenilenince aynı filtre geri gelir.
+            function syncUrl() {
+                const url = new URL(window.location.href);
+                const value = (searchInput.value || '').trim();
+                if (value) {
+                    url.searchParams.set('search', value);
+                } else {
+                    url.searchParams.delete('search');
+                }
+                window.history.replaceState(null, '', url);
+            }
+
+            searchInput.addEventListener('input', function () {
+                filter();
+                syncUrl();
+            });
+
+            // Enter'a basınca sayfayı yeniden yüklemeye gerek yok; filtre zaten canlı uygulanıyor.
+            searchInput.form?.addEventListener('submit', function (e) {
+                if (e.submitter && e.submitter.getAttribute('formaction')) {
+                    return; // "Verileri yenile" butonu normal şekilde gönderilsin.
+                }
+                e.preventDefault();
+            });
+
+            // Sayfa ?search= ile açıldıysa ilk filtrelemeyi hemen yap.
+            filter();
         })();
     </script>
 }

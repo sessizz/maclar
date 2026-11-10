@@ -1,22 +1,21 @@
-using Maclar.Web.Models;
 using Microsoft.Extensions.Hosting;
 
 namespace Maclar.Web.Services;
 
 public class MatchRefreshBackgroundService : BackgroundService
 {
-    private readonly IMatchScraperService _scraperService;
+    private readonly MatchSyncService _syncService;
     private readonly CachedMatchService _cachedMatchService;
     private readonly ILogger<MatchRefreshBackgroundService> _logger;
     private readonly TimeSpan _refreshInterval;
 
     public MatchRefreshBackgroundService(
-        IMatchScraperService scraperService,
+        MatchSyncService syncService,
         CachedMatchService cachedMatchService,
         ILogger<MatchRefreshBackgroundService> logger,
         IConfiguration configuration)
     {
-        _scraperService = scraperService;
+        _syncService = syncService;
         _cachedMatchService = cachedMatchService;
         _logger = logger;
 
@@ -29,7 +28,17 @@ public class MatchRefreshBackgroundService : BackgroundService
     {
         _logger.LogInformation("MatchRefreshBackgroundService başlatıldı. Interval: {Interval} dakika", _refreshInterval.TotalMinutes);
 
-        // Uygulama ilk açıldığında hemen bir kere veri çekmeye çalış
+        // Önce veritabanındakileri göster; site yavaş/erişilemez olsa da liste boş kalmasın.
+        try
+        {
+            await _syncService.LoadFromStoreAsync(stoppingToken);
+        }
+        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Maçlar veritabanından yüklenemedi.");
+        }
+
+        // Ardından hemen bir kere siteden çek
         await RefreshOnceAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -52,16 +61,12 @@ public class MatchRefreshBackgroundService : BackgroundService
         try
         {
             _logger.LogInformation("Maç verileri çekiliyor...");
-            IReadOnlyList<MatchDto> matches = await _scraperService.GetMatchesAsync(cancellationToken);
-            _cachedMatchService.UpdateMatches(matches, DateTime.UtcNow);
-            _logger.LogInformation("Maç verileri başarıyla güncellendi. Toplam {Count} kayıt.", matches.Count);
+            await _syncService.SyncAsync(cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogError(ex, "Maç verileri güncellenirken hata oluştu.");
             _cachedMatchService.SetError("Maç verileri güncellenirken bir hata oluştu.");
         }
     }
 }
-
-
