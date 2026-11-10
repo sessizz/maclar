@@ -1,0 +1,42 @@
+@model (string Title, DateTime? LastUpdatedAt, string? ErrorMessage)
+@{
+    var updated = Model.LastUpdatedAt.HasValue
+        ? Maclar.Web.Services.IstanbulClock.FromUtc(Model.LastUpdatedAt.Value).ToString("d MMMM yyyy, HH:mm", MatchFormat.Turkish)
+        : null;
+}
+<div class="page-head">
+    <div>
+        <h1>@Model.Title</h1>
+        <p class="sub">
+            @if (updated is not null)
+            {
+                <text>Son güncelleme @updated. </text>
+            }
+            Kaynak: <a href="https://istanbul.voleyboliltemsilciligi.com/MacTakvimi" target="_blank" rel="noopener">istanbul.voleyboliltemsilciligi.com</a>
+        </p>
+    </div>
+    <form method="post" asp-controller="Matches" asp-action="Refresh" class="head-actions" data-refresh-form>
+        <input type="hidden" name="returnUrl" value="" />
+        <input type="hidden" name="search" value="" />
+        <button type="submit" class="btn btn-primary">
+            <partial name="_Icon" model="@("refresh")" />
+            Verileri yenile
+        </button>
+    </form>
+</div>
+
+@if (TempData["RefreshMessage"] is string refreshMessage)
+{
+    <div class="alert" role="status">
+        <partial name="_Icon" model="@("info")" />
+        <div class="alert-desc">@refreshMessage</div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-warn" role="alert">
+        <partial name="_Icon" model="@("info")" />
+        <div class="alert-desc">@Model.ErrorMessage</div>
+    </div>
+}

@@ -1,0 +1,222 @@
+/* Maç Takvimi arayüzü. Renk ve ölçüler shadcn/ui (zinc teması) değişkenlerinden alındı:
+   https://ui.shadcn.com/themes. Tüm renkler aşağıdaki değişkenlerden gelir. */
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --primary: oklch(0.21 0.006 285.885);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.705 0.015 286.067);
+    --warn: oklch(0.97 0.03 85);
+    --warn-foreground: oklch(0.45 0.1 70);
+    --warn-border: oklch(0.88 0.08 85);
+    /* Satır vurgusu (fare üstündeyken). Gün başlığı satırlarının griyle karışmasın diye ayrı renk. */
+    --row-hover: oklch(0.955 0.045 150);
+    --radius: 0.625rem;
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, monospace;
+    color-scheme: light;
+}
+
+.dark {
+    --background: oklch(0.141 0.005 285.823);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.274 0.006 286.033);
+    --muted-foreground: oklch(0.705 0.015 286.067);
+    --primary: oklch(0.92 0.004 286.32);
+    --primary-foreground: oklch(0.21 0.006 285.885);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.552 0.016 285.938);
+    --warn: oklch(0.3 0.06 70 / 40%);
+    --warn-foreground: oklch(0.85 0.12 80);
+    --warn-border: oklch(0.55 0.1 70 / 50%);
+    --row-hover: oklch(0.72 0.17 50 / 22%);
+    color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font: 400 14px/1.5 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted-foreground); }
+.wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding-inline: 24px; }
+.spacer { flex: 1; }
+
+/* Üst bar */
+.site-header {
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 92%, transparent);
+    backdrop-filter: blur(8px);
+}
+.hbar { display: flex; align-items: center; gap: 16px; min-height: 56px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; text-decoration: none; }
+.brand .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); }
+.nav { display: flex; gap: 4px; margin-left: 12px; }
+.nav a { padding: 6px 10px; border-radius: calc(var(--radius) - 4px); color: var(--muted-foreground); text-decoration: none; font-weight: 500; transition: color 120ms ease-out, background-color 120ms ease-out; }
+.nav a:hover { color: var(--foreground); background: var(--muted); }
+.nav a.on { color: var(--foreground); }
+.search { position: relative; width: 320px; }
+.search > .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); pointer-events: none; }
+.input {
+    width: 100%; height: 36px; padding: 0 32px 0 34px;
+    border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+    background: transparent; color: var(--foreground); font: inherit;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+    transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+.input::placeholder { color: var(--muted-foreground); }
+.input:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent); }
+.input::-webkit-search-cancel-button { cursor: pointer; }
+.kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); color: var(--muted-foreground); font: 500 11px/18px var(--font-mono); pointer-events: none; }
+.search:focus-within .kbd { display: none; }
+
+/* Düğmeler */
+.btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 36px; padding: 0 14px;
+    border: 1px solid transparent; border-radius: calc(var(--radius) - 2px);
+    font: 500 14px/1 var(--font-sans); white-space: nowrap; cursor: pointer;
+    transition: background-color 120ms ease-out, opacity 120ms ease-out;
+}
+.btn-primary { background: var(--primary); color: var(--primary-foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 10%); }
+.btn-primary:hover { background: color-mix(in oklab, var(--primary) 90%, transparent); }
+.btn-ghost { width: 36px; padding: 0; background: transparent; color: var(--foreground); }
+.btn-ghost:hover { background: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.is-loading .icon { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-ghost .icon-sun { display: inline-flex; }
+.btn-ghost .icon-moon { display: none; }
+.dark .btn-ghost .icon-sun { display: none; }
+.dark .btn-ghost .icon-moon { display: inline-flex; }
+
+/* Sayfa başlığı */
+.main { padding-top: 32px; padding-bottom: 48px; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+h1 { margin: 0; font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -0.025em; }
+.sub { margin: 4px 0 0; color: var(--muted-foreground); }
+.sub a { color: inherit; text-underline-offset: 3px; }
+.sub a:hover { color: var(--foreground); }
+.head-actions { display: flex; gap: 8px; margin: 0; }
+
+.alert { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 12px; align-items: start; margin-bottom: 16px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.alert .icon { margin-top: 2px; }
+.alert-warn { background: var(--warn); color: var(--warn-foreground); border-color: var(--warn-border); }
+
+/* Kart, araç çubuğu, tablo */
+.card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / 5%); }
+.table-card { overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.toggles { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: var(--radius); background: var(--muted); }
+.toggle {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px;
+    border: 0; border-radius: calc(var(--radius) - 3px);
+    background: transparent; color: var(--muted-foreground); font: 500 13px/1 var(--font-sans); cursor: pointer;
+    transition: color 120ms ease-out, background-color 120ms ease-out;
+}
+.toggle:hover { color: var(--foreground); }
+.toggle.is-on { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.count { font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.select { position: relative; display: inline-flex; align-items: center; }
+.select select {
+    appearance: none; height: 36px; padding: 0 32px 0 12px;
+    border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px);
+    background: var(--background); color: var(--foreground); font: 500 14px/1 var(--font-sans); cursor: pointer;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+.select select:hover { background: var(--muted); }
+.select .icon { position: absolute; right: 10px; color: var(--muted-foreground); pointer-events: none; }
+
+table { width: 100%; border-collapse: collapse; }
+th { height: 40px; padding: 0 16px; text-align: left; font-weight: 500; color: var(--muted-foreground); border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr[data-row] td { transition: background-color 120ms ease-out; }
+tbody tr[data-row]:hover td { background: var(--row-hover); }
+tr.group td { padding: 8px 16px; background: var(--muted); }
+.group-title { font-weight: 600; }
+.group-meta { margin-left: 8px; color: var(--muted-foreground); font-size: 12px; }
+.c-time { width: 80px; }
+.teams { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; column-gap: 12px; font-weight: 500; }
+.teams .home { text-align: right; }
+.teams .sep { color: var(--muted-foreground); }
+.c-league { width: 150px; }
+.badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.badge-outline { border-color: var(--border); color: var(--foreground); }
+.badge-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+.c-venue { width: 34%; color: var(--muted-foreground); }
+.ico-text { display: inline-flex; gap: 6px; align-items: flex-start; }
+.ico-text .icon { width: 14px; height: 14px; margin-top: 3px; }
+.c-score { width: 70px; text-align: right; }
+.score { font-weight: 600; }
+.c-num { width: 130px; text-align: right; }
+.row-link { text-decoration: none; font-weight: 500; }
+.row-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.no-results td, .empty { padding: 32px 16px; text-align: center; color: var(--muted-foreground); }
+.foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 13px; }
+
+/* Telefon */
+@media (max-width: 760px) {
+    .wrap { padding-inline: 16px; }
+    .hbar { flex-wrap: wrap; row-gap: 8px; padding-block: 10px; }
+    .nav { order: 3; width: 100%; margin-left: -10px; }
+    .search { order: 4; width: 100%; }
+    .kbd { display: none; }
+    .main { padding-top: 24px; }
+    h1 { font-size: 26px; }
+    .hide-sm { display: none; }
+    .toolbar .spacer { display: none; }
+
+    table.matches thead, table.venues thead { display: none; }
+    table.matches tbody tr[data-row] {
+        display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 12px; row-gap: 6px;
+        padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+    table.matches tbody tr[data-row] td { padding: 0; border: 0; width: auto; text-align: left; }
+    table.matches tbody tr[data-row]:hover { background: var(--row-hover); }
+    table.matches tbody tr[data-row]:hover td { background: none; }
+    table.matches .c-time { grid-row: span 3; }
+    table.matches .c-league, table.matches .c-venue, table.matches .c-score { grid-column: 2; }
+    table.matches .c-venue { font-size: 13px; }
+    table.matches .c-score:has(.muted) { display: none; }
+    .teams { column-gap: 8px; }
+    tr.group td { display: block; }
+
+    table.venues tbody tr[data-row] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    table.venues tbody tr[data-row] td { padding: 0; border: 0; width: auto; text-align: left; }
+    table.venues tbody tr[data-row] td:first-child { grid-column: 1 / -1; }
+    table.venues tbody tr[data-row] td::before { font-family: var(--font-sans); }
+    table.venues tbody tr[data-row] td:nth-child(2)::before { content: "Yaklaşan: "; color: var(--muted-foreground); }
+    table.venues tbody tr[data-row] td:nth-child(3)::before { content: "Toplam: "; color: var(--muted-foreground); }
+    table.venues tbody tr[data-row] td:nth-child(4)::before { content: "İlk: "; color: var(--muted-foreground); }
+    table.venues tbody tr[data-row] td:nth-child(5)::before { content: "Son: "; color: var(--muted-foreground); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

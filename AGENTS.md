@@ -10,7 +10,9 @@ aranabilir tek sayfalık bir tablo olarak gösteren ASP.NET Core MVC uygulaması
 
 - Framework: .NET 8 (`net8.0`), ASP.NET Core MVC (Razor views)
 - Tek dış bağımlılık: `HtmlAgilityPack` (HTML parse)
-- UI: Bootstrap 5 + jQuery (`wwwroot/lib` altında, depoya dahil)
+- UI: shadcn/ui görünümü, elle yazılmış CSS (`wwwroot/css/app.css`, zinc teması değişkenleri) +
+  küçük vanilla JS. React, Tailwind, Bootstrap veya jQuery **kullanılmıyor** (`wwwroot/lib` altındaki
+  Bootstrap/jQuery şablondan kalma, hiçbir sayfa yüklemiyor). Font: Geist / Geist Mono (Google Fonts).
 - Veritabanı: **SQLite** (`Microsoft.Data.Sqlite`, ham SQL, EF Core yok). Kimlik doğrulama **yok**.
 - Deploy: Docker (`Dockerfile`, kökte) — Coolify üzerinde çalışıyor.
 - Kod yorumları, log mesajları ve UI metinleri **Türkçe**. Bu geleneği koru.
@@ -22,7 +24,7 @@ Dockerfile                  # Multi-stage build (sdk:8.0 -> aspnet:8.0), port 80
 Maclar.Web/
   Program.cs                # DI kaydı + pipeline. Varsayılan route: Matches/Index
   Controllers/
-    MatchesController.cs    # Index (listeleme + sunucu tarafı arama), Refresh (POST, elle yenileme)
+    MatchesController.cs    # Index "/" (bugün ve sonrası), Past "/gecmis", Venues "/salonlar", Refresh (POST)
     HomeController.cs       # Şablondan kalma (Index/Privacy/Error); sadece Error kullanılıyor
   Services/
     IMatchScraperService.cs / MatchScraperService.cs   # Siteyi indirir, <table> satırlarını MatchDto'ya çevirir
@@ -33,11 +35,21 @@ Maclar.Web/
     MatchChangeNotifier.cs  # Senkronizasyon farklarından bildirim metni üretir
     TelegramNotifier.cs     # Telegram Bot API sendMessage
     RateLimitPolicies.cs    # Rate limit sabitleri
+    IstanbulClock.cs        # İstanbul saat dilimi: Now, Today, FromUtc
   Models/
     MatchDto.cs             # Tek maç kaydı
-    MatchesIndexViewModel.cs
-  Views/Matches/Index.cshtml  # Tablo + istemci tarafı canlı filtreleme (inline JS)
-  wwwroot/                  # Statik dosyalar, lib/ altında vendor kütüphaneler
+    MatchesIndexViewModel.cs  # Liste modeli (MatchDayGroup) + VenuesViewModel
+    MatchFormat.cs          # Türkçe gösterim: salon/küme başlık biçimi, gün adı, skor, arama metni
+  Views/
+    Shared/_Layout.cshtml   # Üst bar (menü, arama, tema düğmesi), tema ilk değeri satır içi script ile
+    Shared/_PageHead.cshtml # Sayfa başlığı, son güncelleme, "Verileri yenile" formu, uyarılar
+    Shared/_Icon.cshtml     # Lucide SVG ikonları (<partial name="_Icon" model="@("map")" />)
+    Matches/List.cshtml     # Maçlar ve Geçmiş (ortak): gün grupları, gün/küme filtresi, skor
+    Matches/Venues.cshtml   # Salonlar tablosu
+  wwwroot/
+    css/app.css             # Tüm stiller; renkler :root ve .dark değişkenlerinden
+    js/site.js              # Tema düğmesi, "/" kısayolu, yenileme formunun dönüş adresi
+    js/matches.js           # Arama + gün + küme filtresi (Maçlar, Geçmiş, Salonlar)
 ```
 
 ## Veri akışı ve maç verilerinin saklandığı yer
@@ -78,10 +90,11 @@ Tekillik ve güncelleme kuralları (`MatchStore`):
   `LastSeenAt` sitede en son görüldüğü zamanı tutar; `FirstSeenAt` ilk eklenme.
 - Bilinen sınır: bir maçın tarihi, takım adı, küme veya kategorisi sitede
   değişirse yeni kayıt oluşur, eskisi de kalır.
-- Liste sırası: eskiden yeniye (tarih, sonra saat artan). Sayfa açılınca istemci
-  bugün veya sonrasındaki ilk maça kaydırır, bugünün satırları vurgulanır
-  ("Bugüne git" butonu aynı işi yapar). Bugün = `Europe/Istanbul` tarihine göre,
-  satırlardaki `data-date="yyyy-MM-dd"` ile karşılaştırılır.
+- Sayfalar: **Maçlar** (`/`) bugün ve sonrası, eskiden yeniye; tarihi belirsizler en sonda.
+  **Geçmiş** (`/gecmis`) bugünden öncekiler, en yeni gün üstte (gün içinde saat artan).
+  **Salonlar** (`/salonlar`) salon başına yaklaşan/toplam maç, ilk yaklaşan ve son oynanan
+  tarih; salona tıklayınca `/?search=<salon>` açılır. "Bugün" = `IstanbulClock.Today`.
+- Gruplama ve sıralama `MatchesController.BuildList`'te; DB zaten tarih+saat artan döner.
 
 ## Değişiklik bildirimi (Telegram)
 
@@ -139,17 +152,32 @@ gerçek sayfa HTML'ini indirip yapıyı doğrula; tahmine dayalı selector yazma
 
 ## Arama
 
-Arama **yalnızca tarayıcı tarafında** yapılır (`Views/Matches/Index.cshtml`
-içindeki inline script). Sunucuya filtreleme ekleme.
+Arama ve filtreler **yalnızca tarayıcı tarafında** yapılır (`wwwroot/js/matches.js`).
+Sunucuya filtreleme ekleme.
 
-- Sunucu her zaman tüm listeyi gönderir; `?search=` değeri sadece arama kutusunu
-  doldurur ve sayfa açılınca filtre bu değerle bir kez çalışır.
+- Sunucu her zaman sayfanın tüm listesini gönderir. Her satırda `data-search`
+  (sunucuda `MatchFormat.SearchText` ile `tr-TR` küçük harf), `data-day="yyyy-MM-dd"` ve
+  `data-league` var; JS bunlara bakar, hücre metnine bakmaz. Aranabilir yeni alan
+  eklersen `SearchText`'e ekle.
 - Kurallar: boşlukla ayrılmış tüm kelimeler eşleşmeli (AND), `"tırnaklı ifade"`
   tek kelime sayılır, `toLocaleLowerCase('tr-TR')` ile karşılaştırılır.
-  Alanlar: tarih, salon, ev sahibi, misafir, küme, kategori hücreleri.
-- Yazdıkça `history.replaceState` ile adres çubuğundaki `?search=` güncellenir
-  (paylaşılabilir link). Enter sayfayı yeniden yüklemez.
-- "Verileri yenile" ve rate limit redirect'i aramayı `?search=` ile korur.
+  Alanlar: tarih, gün adı, salon, ev sahibi, misafir, küme, kategori.
+- Filtre durumu adres çubuğunda: `?search=`, `?gun=yyyy-MM-dd`, `?kume=` (`replaceState`,
+  paylaşılabilir link). Gün başlığı filtreye uyan maç yoksa gizlenir, sayısı güncellenir.
+- Gün düğmeleri sadece Maçlar'da (`ShowDayFilter`); Geçmiş'te gün sayısı büyüyeceği için yok.
+- "Verileri yenile" formu `returnUrl` (sayfa + filtreler) gönderir; hem `Refresh` hem rate
+  limit redirect'i sadece site içi adrese döner (`//` ve `/\` ile başlayanlar reddedilir).
+
+## Arayüz
+
+- Renkler yalnızca `app.css`'teki `:root` / `.dark` değişkenlerinden; sayfaya sabit renk yazma.
+- Koyu tema: `<html class="dark">`. İlk değer localStorage `theme` yoksa sistem tercihi.
+- Satır vurgusu sadece fare üstündeyken (`--row-hover`): açık temada açık yeşil, koyu temada
+  turuncu. Gün başlığı satırları gri (`--muted`); ikisini aynı renk yapma.
+- Takım adları yan yana ve eşit ağırlıkta (ev sahibi sağa, misafir sola dayalı, arada `-`).
+  Takımlardan birini soluk/ikincil gösterme. "Sıradaki maç" vurgusu ve özet kartları
+  kullanıcı isteğiyle kaldırıldı; geri ekleme.
+- Telefonda (<760px) tablo satırları kartlaşır (CSS grid); menü ve arama ikinci/üçüncü satıra iner.
 
 Türkçe karakterler (İ/ı) nedeniyle karşılaştırmalarda daima `tr-TR` kültürü kullan.
 

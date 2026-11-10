@@ -29,7 +29,7 @@ public class MatchChangeNotifier
 
     public async Task NotifyAsync(MatchSaveResult result, int scrapedCount, CancellationToken cancellationToken = default)
     {
-        var message = BuildMessage(result, scrapedCount, IstanbulToday());
+        var message = BuildMessage(result, scrapedCount, IstanbulClock.Today);
         if (message is null)
         {
             return;
@@ -146,18 +146,4 @@ public class MatchChangeNotifier
     private static string H(string? text) =>
         (text ?? string.Empty).Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
-    private static DateTime IstanbulToday()
-    {
-        TimeZoneInfo zone;
-        try
-        {
-            zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            zone = TimeZoneInfo.FindSystemTimeZoneById("Turkey Standard Time");
-        }
-
-        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone).Date;
-    }
 }

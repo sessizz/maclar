@@ -21,7 +21,108 @@ public class MatchesController : Controller
         _logger = logger;
     }
 
+    /// <summary>
+    /// Bugün ve sonrasındaki maçlar (tarihi belirsiz olanlar en sonda).
+    /// </summary>
     public async Task<IActionResult> Index(string? search, CancellationToken cancellationToken)
+    {
+        var (matches, lastUpdatedAt, errorMessage) = await GetMatchesAsync(cancellationToken);
+        var today = IstanbulClock.Today;
+
+        var upcoming = matches.Where(m => m.Date is null || m.Date.Value.Date >= today).ToList();
+
+        var viewModel = BuildList(upcoming, newestFirst: false);
+        viewModel.Title = "İstanbul Voleybol Maç Takvimi";
+        viewModel.Nav = "matches";
+        viewModel.Search = search;
+        viewModel.ShowDayFilter = true;
+        viewModel.EmptyMessage = "Bugün ve sonrası için kayıtlı maç yok. Oynanmış maçlar Geçmiş sekmesinde.";
+        viewModel.LastUpdatedAt = lastUpdatedAt;
+        viewModel.ErrorMessage = errorMessage;
+
+        return View("List", viewModel);
+    }
+
+    /// <summary>
+    /// Bugünden önceki maçlar, en yeni gün en üstte. Siteden silinen maçlar da burada kalır.
+    /// </summary>
+    [HttpGet("gecmis")]
+    public async Task<IActionResult> Past(string? search, CancellationToken cancellationToken)
+    {
+        var (matches, lastUpdatedAt, errorMessage) = await GetMatchesAsync(cancellationToken);
+        var today = IstanbulClock.Today;
+
+        var past = matches.Where(m => m.Date.HasValue && m.Date.Value.Date < today).ToList();
+
+        var viewModel = BuildList(past, newestFirst: true);
+        viewModel.Title = "Geçmiş maçlar";
+        viewModel.Nav = "past";
+        viewModel.Search = search;
+        viewModel.ShowDayFilter = false;
+        viewModel.EmptyMessage = "Henüz geçmiş maç yok. Oynanan maçlar burada birikir.";
+        viewModel.LastUpdatedAt = lastUpdatedAt;
+        viewModel.ErrorMessage = errorMessage;
+
+        return View("List", viewModel);
+    }
+
+    /// <summary>
+    /// Salonlar ve her salondaki maç sayıları.
+    /// </summary>
+    [HttpGet("salonlar")]
+    public async Task<IActionResult> Venues(CancellationToken cancellationToken)
+    {
+        var (matches, lastUpdatedAt, errorMessage) = await GetMatchesAsync(cancellationToken);
+        var today = IstanbulClock.Today;
+        var comparer = StringComparer.Create(MatchFormat.Turkish, ignoreCase: true);
+
+        var venues = matches
+            .Where(m => !string.IsNullOrWhiteSpace(m.Venue))
+            .GroupBy(m => MatchFormat.Venue(m.Venue), comparer)
+            .Select(g =>
+            {
+                var upcoming = g.Where(m => m.Date.HasValue && m.Date.Value.Date >= today).ToList();
+                return new VenueRow(
+                    Name: g.Key,
+                    UpcomingCount: upcoming.Count,
+                    TotalCount: g.Count(),
+                    NextDate: upcoming.Select(m => m.Date).Min(),
+                    LastDate: g.Where(m => m.Date.HasValue && m.Date.Value.Date < today).Select(m => m.Date).Max());
+            })
+            .OrderByDescending(v => v.UpcomingCount)
+            .ThenBy(v => v.Name, comparer)
+            .ToList();
+
+        return View(new VenuesViewModel { Venues = venues, LastUpdatedAt = lastUpdatedAt, ErrorMessage = errorMessage });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(RateLimitPolicies.Refresh)]
+    public async Task<IActionResult> Refresh(string? search, string? returnUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _syncService.SyncAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Mevcut cache'i bozmadan kullanıcıya bilgi veriyoruz.
+            _logger.LogError(ex, "Elle yenileme sırasında maç verileri çekilemedi.");
+            TempData["RefreshMessage"] = "Veriler şu an yenilenemedi. Son başarılı veriler gösteriliyor.";
+        }
+
+        // Kullanıcı hangi sayfadaysa (filtreleriyle birlikte) oraya dön; dış adreslere asla yönlendirme.
+        if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+        {
+            return LocalRedirect(returnUrl);
+        }
+
+        return RedirectToAction(nameof(Index), new { search = string.IsNullOrWhiteSpace(search) ? null : search });
+    }
+
+    private async Task<(IReadOnlyList<MatchDto> Matches, DateTime? LastUpdatedAt, string? ErrorMessage)> GetMatchesAsync(
+        CancellationToken cancellationToken)
     {
         var (matches, lastUpdatedAt, errorMessage) = await _cachedMatchService.GetCurrentMatchesAsync(cancellationToken);
 
@@ -41,38 +142,33 @@ public class MatchesController : Controller
             }
         }
 
-        // Arama tamamen tarayıcı tarafında yapılıyor (Views/Matches/Index.cshtml).
-        // Sunucu her zaman tüm listeyi gönderir; "search" sadece arama kutusunu doldurmak için
-        // view'a aktarılır, sayfa açılınca istemci filtresi bu değerle bir kez çalışır.
-        var viewModel = new MatchesIndexViewModel
-        {
-            Search = search,
-            Matches = matches ?? Array.Empty<MatchDto>(),
-            LastUpdatedAt = lastUpdatedAt,
-            ErrorMessage = errorMessage,
-        };
-
-        return View(viewModel);
+        return (matches ?? Array.Empty<MatchDto>(), lastUpdatedAt, errorMessage);
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [EnableRateLimiting(RateLimitPolicies.Refresh)]
-    public async Task<IActionResult> Refresh(string? search, CancellationToken cancellationToken)
+    /// <summary>
+    /// Maçları güne göre gruplar. Gelen liste veritabanından tarih ve saate göre artan sırada gelir.
+    /// Arama ve filtreler tarayıcıda yapılır (wwwroot/js/matches.js); sunucu her zaman tüm listeyi gönderir.
+    /// </summary>
+    private static MatchesIndexViewModel BuildList(IReadOnlyList<MatchDto> matches, bool newestFirst)
     {
-        try
-        {
-            await _syncService.SyncAsync(cancellationToken);
-        }
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Mevcut cache'i bozmadan kullanıcıya bilgi veriyoruz.
-            _logger.LogError(ex, "Elle yenileme sırasında maç verileri çekilemedi.");
-            TempData["RefreshMessage"] = "Veriler şu an yenilenemedi. Son başarılı veriler gösteriliyor.";
-        }
+        var groups = matches
+            .GroupBy(m => m.Date?.Date)
+            .Select(g => new MatchDayGroup(g.Key, g.ToList()));
 
-        return RedirectToAction(nameof(Index), new { search = string.IsNullOrWhiteSpace(search) ? null : search });
+        groups = newestFirst
+            ? groups.OrderByDescending(g => g.Date ?? DateTime.MinValue)
+            : groups.OrderBy(g => g.Date is null).ThenBy(g => g.Date);
+
+        return new MatchesIndexViewModel
+        {
+            Groups = groups.ToList(),
+            TotalCount = matches.Count,
+            Leagues = matches
+                .Select(m => MatchFormat.League(m.League))
+                .Where(l => l.Length > 0)
+                .Distinct()
+                .OrderBy(l => l, StringComparer.Create(MatchFormat.Turkish, ignoreCase: true))
+                .ToList(),
+        };
     }
 }
-
-

@@ -1,0 +1,55 @@
+@model Maclar.Web.Models.VenuesViewModel
+@{
+    ViewData["Title"] = "Salonlar";
+    ViewData["Nav"] = "venues";
+}
+
+<partial name="_PageHead" model="@(("Salonlar", Model.LastUpdatedAt, Model.ErrorMessage))" />
+
+<div class="card table-card" data-filter-root>
+    @if (Model.Venues.Count > 0)
+    {
+        <table class="venues">
+            <thead>
+                <tr>
+                    <th scope="col">Salon</th>
+                    <th scope="col" class="c-num">Yaklaşan maç</th>
+                    <th scope="col" class="c-num">Toplam maç</th>
+                    <th scope="col">İlk yaklaşan maç</th>
+                    <th scope="col">Son oynanan maç</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var venue in Model.Venues)
+                {
+                    <tr data-row data-search="@venue.Name.ToLower(MatchFormat.Turkish)">
+                        <td>
+                            <a class="row-link" asp-controller="Matches" asp-action="Index" asp-route-search="@venue.Name">
+                                <span class="ico-text"><partial name="_Icon" model="@("map")" /><span>@venue.Name</span></span>
+                            </a>
+                        </td>
+                        <td class="c-num mono">@venue.UpcomingCount</td>
+                        <td class="c-num mono">@venue.TotalCount</td>
+                        <td>@(venue.NextDate?.ToString("d MMMM dddd", MatchFormat.Turkish) ?? "—")</td>
+                        <td>@(venue.LastDate?.ToString("d MMMM yyyy", MatchFormat.Turkish) ?? "—")</td>
+                    </tr>
+                }
+                <tr class="no-results" data-no-results hidden>
+                    <td colspan="5">Aramaya uyan salon yok.</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="foot">
+            <span data-result-count data-noun="salon">Gösterilen: @Model.Venues.Count / @Model.Venues.Count salon</span>
+            <span class="hide-sm">Salona tıklayınca o salondaki maçlar açılır</span>
+        </div>
+    }
+    else
+    {
+        <div class="empty">Henüz salon bilgisi yok.</div>
+    }
+</div>
+
+@section Scripts {
+    <script src="~/js/matches.js" asp-append-version="true"></script>
+}

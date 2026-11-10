@@ -1,0 +1,121 @@
+@model Maclar.Web.Models.MatchesIndexViewModel
+@{
+    ViewData["Title"] = Model.Title;
+    ViewData["Nav"] = Model.Nav;
+    ViewData["Search"] = Model.Search;
+}
+
+<partial name="_PageHead" model="@((Model.Title, Model.LastUpdatedAt, Model.ErrorMessage))" />
+
+<div class="card table-card" data-filter-root>
+    @if (Model.TotalCount > 0)
+    {
+        <div class="toolbar">
+            @if (Model.ShowDayFilter)
+            {
+                <div class="toggles" role="group" aria-label="Gün">
+                    <button class="toggle is-on" type="button" data-day="" aria-pressed="true">Tümü <span class="count">@Model.TotalCount</span></button>
+                    @foreach (var group in Model.Groups.Where(g => g.Date.HasValue))
+                    {
+                        var key = group.Date!.Value.ToString("yyyy-MM-dd");
+                        <button class="toggle" type="button" data-day="@key" aria-pressed="false">@MatchFormat.ShortDay(group.Date.Value) <span class="count">@group.Matches.Count</span></button>
+                    }
+                </div>
+            }
+            <div class="spacer"></div>
+            <label class="sr-only" for="leagueFilter">Küme</label>
+            <div class="select">
+                <select id="leagueFilter" data-league-filter>
+                    <option value="">Tüm kümeler</option>
+                    @foreach (var league in Model.Leagues)
+                    {
+                        <option value="@league">@league</option>
+                    }
+                </select>
+                <partial name="_Icon" model="@("chevron")" />
+            </div>
+        </div>
+
+        <table class="matches">
+            <thead>
+                <tr>
+                    <th scope="col">Saat</th>
+                    <th scope="col">Maç</th>
+                    <th scope="col">Küme</th>
+                    <th scope="col">Salon</th>
+                    <th scope="col" class="c-score">Skor</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in Model.Groups)
+                {
+                    var dayKey = group.Date?.ToString("yyyy-MM-dd") ?? "";
+                    <tr class="group" data-group="@dayKey">
+                        <td colspan="5">
+                            <span class="group-title">@MatchFormat.DayTitle(group.Date)</span>
+                            <span class="group-meta" data-group-count>@group.Matches.Count maç</span>
+                        </td>
+                    </tr>
+                    @foreach (var match in group.Matches)
+                    {
+                        var league = MatchFormat.League(match.League);
+                        var score = MatchFormat.Score(match);
+                        <tr data-row data-day="@dayKey" data-league="@league" data-search="@MatchFormat.SearchText(match)">
+                            <td class="c-time"><span class="mono">@MatchFormat.Time(match)</span></td>
+                            <td class="c-match">
+                                <div class="teams">
+                                    <span class="home">@match.HomeTeam</span>
+                                    <span class="sep" aria-label="karşı">-</span>
+                                    <span class="away">@match.AwayTeam</span>
+                                </div>
+                            </td>
+                            <td class="c-league">
+                                <span class="badges">
+                                    @if (league.Length > 0)
+                                    {
+                                        <span class="badge badge-outline">@league</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(match.CategoryCode))
+                                    {
+                                        <span class="badge badge-secondary" title="Kategori">@match.CategoryCode</span>
+                                    }
+                                </span>
+                            </td>
+                            <td class="c-venue">
+                                @if (!string.IsNullOrWhiteSpace(match.Venue))
+                                {
+                                    <span class="ico-text"><partial name="_Icon" model="@("map")" /><span>@MatchFormat.Venue(match.Venue)</span></span>
+                                }
+                            </td>
+                            <td class="c-score">
+                                @if (score.Length > 0)
+                                {
+                                    <span class="mono score" title="@match.SetScores">@score</span>
+                                }
+                                else
+                                {
+                                    <span class="muted" aria-label="Skor yok">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                <tr class="no-results" data-no-results hidden>
+                    <td colspan="5">Aramaya uyan maç yok. Arama kutusunu veya filtreleri temizleyin.</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="foot">
+            <span data-result-count data-noun="maç">Gösterilen: @Model.TotalCount / @Model.TotalCount maç</span>
+            <span class="hide-sm">Siteden kalkan maçlar listede kalır</span>
+        </div>
+    }
+    else
+    {
+        <div class="empty">@Model.EmptyMessage</div>
+    }
+</div>
+
+@section Scripts {
+    <script src="~/js/matches.js" asp-append-version="true"></script>
+}

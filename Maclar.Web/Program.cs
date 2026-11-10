@@ -67,18 +67,24 @@ builder.Services.AddRateLimiter(options =>
         tempData["RefreshMessage"] = "Çok sık yenileme isteği gönderdiniz. Lütfen bir dakika sonra tekrar deneyin.";
         tempData.Save();
 
-        // Kullanıcının aramasını kaybetmemek için formdaki "search" değeriyle geri dön.
+        // Kullanıcının bulunduğu sayfaya (filtreleriyle) geri dön. Sadece site içi adreslere izin ver.
+        string? returnUrl = null;
         string? search = null;
         if (httpContext.Request.HasFormContentType)
         {
             var form = await httpContext.Request.ReadFormAsync(cancellationToken);
+            returnUrl = form["returnUrl"].ToString();
             search = form["search"].ToString().Trim();
         }
 
+        var isLocal = !string.IsNullOrEmpty(returnUrl)
+            && returnUrl[0] == '/'
+            && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'));
+
         httpContext.Response.StatusCode = StatusCodes.Status303SeeOther;
-        httpContext.Response.Headers.Location = string.IsNullOrEmpty(search)
-            ? "/"
-            : $"/{QueryString.Create("search", search)}";
+        httpContext.Response.Headers.Location = isLocal
+            ? returnUrl
+            : string.IsNullOrEmpty(search) ? "/" : $"/{QueryString.Create("search", search)}";
     };
 });
 
