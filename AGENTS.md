@@ -9,7 +9,7 @@ Bu dosya, bu depoda çalışan yapay zekâ ajanları (Claude Code, Codex vb.) ve
 aranabilir tek sayfalık bir tablo olarak gösteren ASP.NET Core MVC uygulamasıdır.
 
 - Framework: .NET 8 (`net8.0`), ASP.NET Core MVC (Razor views)
-- Tek dış bağımlılık: `HtmlAgilityPack` (HTML parse)
+- Bağımlılıklar: `HtmlAgilityPack` (HTML parse), `Microsoft.Data.Sqlite`, `ClosedXML` (Excel okuma)
 - UI: shadcn/ui görünümü, elle yazılmış CSS (`wwwroot/css/app.css`, zinc teması değişkenleri) +
   küçük vanilla JS. React, Tailwind, Bootstrap veya jQuery **kullanılmıyor** (`wwwroot/lib` altındaki
   Bootstrap/jQuery şablondan kalma, hiçbir sayfa yüklemiyor). Font: Geist / Geist Mono (Google Fonts).
@@ -36,6 +36,9 @@ Maclar.Web/
     TelegramNotifier.cs     # Telegram Bot API sendMessage
     ArchiveScraperService.cs          # PuanDurumu sayfasını (WebForms postback zinciri) gezip geçmiş maçları toplar
     ArchiveRefreshBackgroundService.cs # Arşivi günde bir tarar (son tarama zamanı DB'den)
+    ProgramExcelParser.cs   # Haftalık "X. HAFTA PROGRAM.xlsx" dosyasını MatchDto listesine çevirir
+    ProgramImportService.cs # Excel okuma, DB kaydı ve Telegram HTML özeti
+    # Controllers/ProgramApiController.cs: fisbot için POST /api/program
     RateLimitPolicies.cs    # Rate limit sabitleri
     IstanbulClock.cs        # İstanbul saat dilimi: Now, Today, FromUtc
   Models/
@@ -84,7 +87,8 @@ Akış:
 
 Tekillik ve güncelleme kuralları (`MatchStore`):
 - Maç anahtarı (`MatchKey`, UNIQUE): **tarih + ev sahibi + misafir + kategori**,
-  `tr-TR` küçük harf, fazla boşluklar temizlenmiş. Küme anahtarda **yok**: takvim ve arşiv
+  `tr-TR` küçük harf, fazla boşluklar temizlenmiş, Türkçe harfler sadeleşmiş (ı/i, ş/s, ğ/g,
+  ü/u, ö/o, ç/c; kaynaklar "Medıcana" / "MEDICANA" gibi farklı yazabiliyor, v2 geçişi). Küme anahtarda **yok**: takvim ve arşiv
   sayfaları aynı küme için farklı kod kullanıyor ("2LK" / "MDK1L"), kategori kodları aynı.
 - Şema sürümü `PRAGMA user_version` ile tutulur (`MatchStore.Initialize`); yeni geçişi
   `MigrateToV{n}` olarak ekle. v1: `Competition`, `ArchiveSeenAt` sütunları + anahtar yenileme.
@@ -124,6 +128,33 @@ Maç takvimi sayfası sadece yakın tarihli maçları gösterir. Geçmiş maçla
   aynı salon iki satır görünebilir. Takım adları iki sayfada farklı yazılırsa aynı maç iki
   kayıt olur (bilinen sınır).
 
+## Haftalık Excel programı (Telegram ile)
+
+İl müdürlüğünün haftalık program dosyası bota gönderilince veritabanına eklenir.
+
+- Telegram'ı yalnızca **FişBot** dinler; fotoğrafları kendi işler, `.xlsx` belgelerini
+  `POST /api/program` adresine `file` ve `chat_id` alanlarıyla iletir. Maclar polling yapmaz.
+- İstek `Authorization: Bearer <Program:UploadToken>` başlığı taşır; anahtar yoksa adres
+  kapalıdır (404), yanlışsa 401 döner. `Telegram:ChatId` tanımlıysa yalnızca o sohbet
+  kabul edilir (diğerleri 403). `.xlsx`, en fazla 10 MB.
+- Coolify: Maclar'da `Program__UploadToken`, FişBot'ta aynı değerle `MACLAR_UPLOAD_TOKEN`
+  ve `MACLAR_UPLOAD_URL=https://maclar.bahceliler.net/api/program` ayarlanır.
+- API'nin `{ ok, matches, added, message }` yanıtındaki HTML özeti FişBot sohbete yazar.
+- Dosya düzeni (`ProgramExcelParser`): gün + salon başlık satırı ("26 Ekim 2026 Pazartesi" ...
+  salon), altında saat | ev sahibi | misafir | küme | grup ("4B C" -> "4. Bölge C Grubu").
+  Saatler Excel'de kesirli gün; dakikaya yuvarlanır.
+- Gençler küme kodundan kategori alır (MDK1L -> MdK). Büyükler sponsorlu lig adıyla gelir,
+  takvim koduna çevrilir: "UZMAN POSTA 2.LİG KADIN" -> 2LK, "... ERKEK" -> 2LE, "ACH 1.LİG
+  KADIN/ERKEK" -> 1LK/1LE, VSL -> SULTANLAR, SGEL -> EFELER, ASKV -> ASKVK (son üçü tahmin), kategori BYK.
+- Kayıt `SaveExternalAsync(markArchiveSeen: false)`: skor yok, var olan kayıtta saat/salon korunur.
+  Bot cevabında okunan/yeni/var olan sayısı, saati farklı ve tarihi farklı maçlar listelenir.
+
+Erteleme ve kopya kuralları (aynı ev sahibi + misafir + kategori, 14 gün içinde başka tarih):
+- Excel gelince başka tarihli kayıt arşiv/takvimdense: yeni kayıt açılmaz, "tarihi farklı" bildirilir.
+- Excel gelince başka tarihli kayıt önceki bir Excel'dense: yeni tarih geçerli, eskisi silinir.
+- Arşiv veya takvim gelince: sadece Excel'den gelmiş başka tarihli kopyalar silinir.
+- "Sadece Excel'den" = `LastSeenAt = NeverSeenOnCalendar` ve `ArchiveSeenAt IS NULL`.
+
 ## Değişiklik bildirimi (Telegram)
 
 `MatchStore.SaveAsync` her senkronizasyonda bir öncekine göre farkları döner
@@ -140,6 +171,8 @@ bunlardan mesaj üretir, `TelegramNotifier` gönderir:
   "olağandışı değişiklik" uyarısı gider (site/scraper bozulmuş olabilir).
 - Tarihi değişen maçta eski tarihli kayıt DB'de kalır (listede iki satır görünür).
 - Bildirim hatası senkronizasyonu bozmaz. Telegram yapılandırılmamışsa mesaj log'a yazılır.
+- Arşiv taraması da sonucu bildirir (bitti: sayfa/maç/yeni/skoru yeni girilen; boş sonuç; hata).
+  Kapatmak: `Telegram__ArchiveMessages=false`.
 - **Güvenlik:** bot token istek URL'sinde. Telegram HttpClient'ında
   `RemoveAllLoggers()` bu yüzden var; kaldırma, URL'yi asla log'a yazma.
 
@@ -244,6 +277,8 @@ uygulamayı açıp tabloyu, aramayı ve "Verileri yenile" butonunu kontrol et.
 | `Archive:RefreshHours` | `24` | Arşiv tarama aralığı (saat). |
 | `Archive:RequestDelayMs` | `800` | Arşiv taramasında istekler arası bekleme. |
 | `Archive:StartupDelaySeconds` | `60` | Açılıştan sonra ilk kontrol için bekleme. |
+| `Program:UploadToken` | — | FişBot Excel yükleme anahtarı. Env: `Program__UploadToken`. Boşsa API kapalı. |
+| `Telegram:ArchiveMessages` | `true` | Arşiv taraması sonucunu Telegram'a bildir. |
 | `ConnectionStrings:Matches` | `Data Source=data/maclar.db` | SQLite bağlantısı. Env: `ConnectionStrings__Matches`. |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:8080` (Docker) | Dinlenen adres. |
 

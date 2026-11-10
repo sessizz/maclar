@@ -37,18 +37,28 @@ public class MatchSyncService
     /// Tarama dakikalar sürdüğü için kilit dışında yapılır; sadece kayıt ve cache yenileme kilitli.
     /// Değişiklik bildirimi gönderilmez.
     /// </summary>
-    public async Task<(int Added, int Updated)> SaveArchiveAsync(IReadOnlyList<MatchDto> matches, CancellationToken cancellationToken = default)
+    public Task<ExternalSaveResult> SaveArchiveAsync(IReadOnlyList<MatchDto> matches, CancellationToken cancellationToken = default) =>
+        SaveExternalAsync("Arşiv", matches, markArchiveSeen: true, cancellationToken);
+
+    /// <summary>
+    /// Haftalık Excel programından gelen maçları kaydeder (Telegram üzerinden gönderilen dosya).
+    /// </summary>
+    public Task<ExternalSaveResult> SaveProgramAsync(IReadOnlyList<MatchDto> matches, CancellationToken cancellationToken = default) =>
+        SaveExternalAsync("Excel programı", matches, markArchiveSeen: false, cancellationToken);
+
+    private async Task<ExternalSaveResult> SaveExternalAsync(
+        string source, IReadOnlyList<MatchDto> matches, bool markArchiveSeen, CancellationToken cancellationToken)
     {
         await _syncLock.WaitAsync(cancellationToken);
         try
         {
-            var result = await _store.SaveArchiveAsync(matches, DateTime.UtcNow, cancellationToken);
+            var result = await _store.SaveExternalAsync(matches, DateTime.UtcNow, markArchiveSeen, cancellationToken);
             var (all, _) = await _store.GetAllAsync(cancellationToken);
             _cache.ReplaceMatches(all);
 
             _logger.LogInformation(
-                "Arşiv kaydedildi. Yeni: {Added}, güncellenen: {Updated}, veritabanında toplam: {Total}.",
-                result.Added, result.Updated, all.Count);
+                "{Source} kaydedildi. Yeni: {Added}, güncellenen: {Updated}, yeni skor: {Finished}, veritabanında toplam: {Total}.",
+                source, result.Added.Count, result.Updated, result.NewlyFinished.Count, all.Count);
             return result;
         }
         finally

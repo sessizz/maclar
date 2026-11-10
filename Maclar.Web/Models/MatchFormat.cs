@@ -66,6 +66,17 @@ public static class MatchFormat
         return isCode ? league : TitleCase(league);
     }
 
+    /// <summary>Tamamı büyük harf yazılmış takım adlarını ("FENERBAHÇE MEDICANA") başlık biçimine çevirir.</summary>
+    public static string Team(string? team)
+    {
+        if (string.IsNullOrWhiteSpace(team))
+        {
+            return string.Empty;
+        }
+
+        return team.Length > 3 && team == team.ToUpper(Turkish) && team.Any(char.IsLetter) ? TitleCase(team) : team.Trim();
+    }
+
     public static string DayTitle(DateTime? date) =>
         date.HasValue ? date.Value.ToString("dddd, d MMMM", Turkish) : "Tarihi belirsiz";
 

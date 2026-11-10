@@ -11,8 +11,9 @@ namespace Maclar.Web.Services;
 /// İki kaynak yazar:
 /// - Maç takvimi (MacTakvimi sayfası, <see cref="SaveAsync"/>): LastSeenAt güncellenir; değişiklik
 ///   tespiti ve Telegram bildirimleri sadece bu kaynağa göre yapılır.
-/// - Arşiv (PuanDurumu sayfası, <see cref="SaveArchiveAsync"/>): geçmiş maçlar ve skorlar. LastSeenAt'e
-///   dokunmaz; takvimde hiç görülmemiş kayıtlarda LastSeenAt = <see cref="NeverSeenOnCalendar"/>.
+/// - Arşiv (PuanDurumu sayfası) ve haftalık Excel programı (<see cref="SaveExternalAsync"/>): geçmiş maçlar,
+///   skorlar ve program. LastSeenAt'e dokunmaz; takvimde hiç görülmemiş kayıtlarda
+///   LastSeenAt = <see cref="NeverSeenOnCalendar"/>.
 /// </summary>
 public class MatchStore
 {
@@ -26,9 +27,6 @@ public class MatchStore
     public static readonly DateTime NeverSeenOnCalendar = DateTime.MinValue;
 
     private static readonly string NeverSeenText = NeverSeenOnCalendar.ToString("O", CultureInfo.InvariantCulture);
-
-    /// <summary>Şema sürümü (PRAGMA user_version). Yeni bir geçiş eklerken artır.</summary>
-    private const int SchemaVersion = 1;
 
     private readonly string _connectionString;
     private readonly ILogger<MatchStore> _logger;
@@ -96,6 +94,16 @@ public class MatchStore
         {
             MigrateToV1(connection);
         }
+
+        if (version < 2)
+        {
+            // v2: anahtarda Türkçe harfler sadeleştirildi ("Medıcana" ile "MEDICANA" aynı sayılsın).
+            using var transaction = connection.BeginTransaction();
+            var (count, removed) = Rekey(connection, transaction);
+            Execute(connection, transaction, "PRAGMA user_version = 2;");
+            transaction.Commit();
+            _logger.LogInformation("Veritabanı v2'ye geçirildi: {Count} kaydın anahtarı yenilendi, {Removed} çift kayıt birleştirildi.", count, removed);
+        }
     }
 
     /// <summary>
@@ -127,7 +135,20 @@ public class MatchStore
             Execute(connection, transaction, "ALTER TABLE Matches ADD COLUMN ArchiveSeenAt TEXT NULL;");
         }
 
-        // Anahtarları yeni biçime çevir. Aynı yeni anahtara düşen iki kayıt varsa takvimde en son görüleni kalır.
+        var (count, removed) = Rekey(connection, transaction);
+
+        Execute(connection, transaction, "PRAGMA user_version = 1;");
+        transaction.Commit();
+
+        _logger.LogInformation("Veritabanı v1'e geçirildi: {Count} kaydın anahtarı yenilendi, {Removed} çift kayıt birleştirildi.", count, removed);
+    }
+
+    /// <summary>
+    /// Tüm kayıtların anahtarını <see cref="BuildMatchKey"/> ile yeniden hesaplar. Aynı anahtara düşen
+    /// kayıtlardan takvimde en son görüleni kalır; diğerlerinin boş olmayan skor bilgisi ona aktarılır.
+    /// </summary>
+    private static (int Count, int Removed) Rekey(SqliteConnection connection, SqliteTransaction transaction)
+    {
         var rows = new List<(long Id, string OldKey, string NewKey, string LastSeenAt)>();
         using (var select = connection.CreateCommand())
         {
@@ -149,6 +170,17 @@ public class MatchStore
             var ordered = group.OrderByDescending(r => r.LastSeenAt, StringComparer.Ordinal).ToList();
             foreach (var duplicate in ordered.Skip(1))
             {
+                Execute(connection, transaction, """
+                    UPDATE Matches SET
+                        SetScores     = COALESCE(Matches.SetScores, d.SetScores),
+                        HomeSets      = COALESCE(Matches.HomeSets, d.HomeSets),
+                        AwaySets      = COALESCE(Matches.AwaySets, d.AwaySets),
+                        IsFinished    = COALESCE(Matches.IsFinished, d.IsFinished),
+                        Competition   = COALESCE(Matches.Competition, d.Competition),
+                        ArchiveSeenAt = COALESCE(Matches.ArchiveSeenAt, d.ArchiveSeenAt)
+                    FROM (SELECT * FROM Matches WHERE Id = $dup) AS d
+                    WHERE Matches.Id = $keep;
+                    """, ("$dup", duplicate.Id), ("$keep", ordered[0].Id));
                 Execute(connection, transaction, "DELETE FROM Matches WHERE Id = $id;", ("$id", duplicate.Id));
                 removed++;
             }
@@ -165,10 +197,7 @@ public class MatchStore
                 ("$key", group.Key), ("$id", keep.Id));
         }
 
-        Execute(connection, transaction, $"PRAGMA user_version = {SchemaVersion};");
-        transaction.Commit();
-
-        _logger.LogInformation("Veritabanı v1'e geçirildi: {Count} kaydın anahtarı yenilendi, {Removed} çift kayıt birleştirildi.", rows.Count, removed);
+        return (rows.Count, removed);
     }
 
     /// <summary>
@@ -218,6 +247,16 @@ public class MatchStore
         var p = new MatchParameters(command);
         command.Parameters.AddWithValue("$seenAt", seenAtUtc.ToString("O", CultureInfo.InvariantCulture));
 
+        // Takvim gerçek tarihi bilir: sadece Excel'den gelmiş, aynı maçın başka tarihli kopyaları silinir.
+        var programOnlyByPair = existing.Values
+            .Where(s => IsProgramOnly(s) && s.Match.Date.HasValue)
+            .ToLookup(s => PairKey(s.Match));
+        var removedProgramCopies = new HashSet<string>(StringComparer.Ordinal);
+        await using var delete = connection.CreateCommand();
+        delete.Transaction = transaction;
+        delete.CommandText = "DELETE FROM Matches WHERE MatchKey = $key;";
+        var deleteKey = delete.Parameters.Add("$key", SqliteType.Text);
+
         var currentKeys = new HashSet<string>();
         var added = new List<MatchDto>();
         var changed = new List<MatchChange>();
@@ -240,6 +279,18 @@ public class MatchStore
                 else
                 {
                     added.Add(match);
+                }
+
+                if (match.Date.HasValue)
+                {
+                    foreach (var copy in programOnlyByPair[PairKey(match)].Where(s =>
+                                 s.Key != matchKey
+                                 && Math.Abs((s.Match.Date!.Value - match.Date.Value).TotalDays) <= RescheduleWindowDays
+                                 && removedProgramCopies.Add(s.Key)))
+                    {
+                        deleteKey.Value = copy.Key;
+                        await delete.ExecuteNonQueryAsync(cancellationToken);
+                    }
                 }
             }
 
@@ -265,25 +316,53 @@ public class MatchStore
     }
 
     /// <summary>
-    /// Arşivden (PuanDurumu) gelen maçları kaydeder. Var olan kayıtta skor, set ve yarışma bilgisi güncellenir;
-    /// takvimden gelmiş saat ve salon bilgisi korunur. LastSeenAt'e dokunmaz.
+    /// Takvim dışı kaynaklardan (arşiv / Excel programı) gelen maçları kaydeder.
+    /// Var olan kayıtta skor, set ve yarışma bilgisi güncellenir; takvimden gelmiş saat ve salon korunur.
+    /// LastSeenAt'e dokunmaz, yani takvim değişiklik tespitini ve bildirimlerini etkilemez.
     /// </summary>
-    /// <returns>Yeni eklenen ve güncellenen kayıt sayısı.</returns>
-    public async Task<(int Added, int Updated)> SaveArchiveAsync(IReadOnlyList<MatchDto> matches, DateTime seenAtUtc, CancellationToken cancellationToken = default)
+    /// <param name="markArchiveSeen">true: arşiv taraması (ArchiveSeenAt yazılır, bir sonraki tarama zamanı buna göre).</param>
+    public async Task<ExternalSaveResult> SaveExternalAsync(
+        IReadOnlyList<MatchDto> matches, DateTime seenAtUtc, bool markArchiveSeen, CancellationToken cancellationToken = default)
     {
         await using var connection = Open();
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
-        var existingKeys = new HashSet<string>(StringComparer.Ordinal);
-        await using (var keys = connection.CreateCommand())
+        var existing = new Dictionary<string, StoredMatch>(StringComparer.Ordinal);
+        foreach (var stored in await ReadAllAsync(connection, transaction, cancellationToken))
         {
-            keys.Transaction = transaction;
-            keys.CommandText = "SELECT MatchKey FROM Matches;";
-            await using var reader = await keys.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            existing[stored.Key] = stored;
+        }
+
+        // Aynı eşleşmenin (ev sahibi + misafir + kategori) kayıtları: erteleme tespiti için.
+        // Döngü içinde eklenen/silinen kayıtlarla güncel tutulur (aynı seferde gelen dosyalar birbirini de görsün).
+        var byPair = new Dictionary<string, List<StoredMatch>>(StringComparer.Ordinal);
+        foreach (var stored in existing.Values.Where(s => s.Match.Date.HasValue))
+        {
+            Pair(stored.Match).Add(stored);
+        }
+
+        List<StoredMatch> Pair(MatchDto m)
+        {
+            var key = PairKey(m);
+            if (!byPair.TryGetValue(key, out var list))
             {
-                existingKeys.Add(reader.GetString(0));
+                byPair[key] = list = new List<StoredMatch>();
             }
+
+            return list;
+        }
+
+        await using var delete = connection.CreateCommand();
+        delete.Transaction = transaction;
+        delete.CommandText = "DELETE FROM Matches WHERE MatchKey = $key;";
+        var deleteKey = delete.Parameters.Add("$key", SqliteType.Text);
+
+        async Task Remove(StoredMatch stored)
+        {
+            deleteKey.Value = stored.Key;
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+            existing.Remove(stored.Key);
+            Pair(stored.Match).Remove(stored);
         }
 
         await using var command = connection.CreateCommand();
@@ -296,7 +375,7 @@ public class MatchStore
             VALUES (
                 $key, $date, $rawDate, $time, $rawTime, $venue, $home, $away, $setScores,
                 $league, $category, $categoryDescription, $homeSets, $awaySets, $isFinished,
-                $competition, $seenAt, $neverSeen, $seenAt)
+                $competition, $seenAt, $neverSeen, $archiveSeen)
             ON CONFLICT (MatchKey) DO UPDATE SET
                 Time                = COALESCE(Matches.Time, excluded.Time),
                 RawTimeText         = COALESCE(Matches.RawTimeText, excluded.RawTimeText),
@@ -307,17 +386,23 @@ public class MatchStore
                 HomeSets            = COALESCE(excluded.HomeSets, Matches.HomeSets),
                 AwaySets            = COALESCE(excluded.AwaySets, Matches.AwaySets),
                 IsFinished          = COALESCE(excluded.IsFinished, Matches.IsFinished),
-                Competition         = COALESCE(excluded.Competition, Matches.Competition),
-                ArchiveSeenAt       = excluded.ArchiveSeenAt;
+                Competition         = COALESCE(Matches.Competition, excluded.Competition),
+                ArchiveSeenAt       = COALESCE(excluded.ArchiveSeenAt, Matches.ArchiveSeenAt);
             """;
 
         var p = new MatchParameters(command);
         var competition = command.Parameters.Add("$competition", SqliteType.Text);
-        command.Parameters.AddWithValue("$seenAt", seenAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        var seenAt = seenAtUtc.ToString("O", CultureInfo.InvariantCulture);
+        command.Parameters.AddWithValue("$seenAt", seenAt);
         command.Parameters.AddWithValue("$neverSeen", NeverSeenText);
+        command.Parameters.AddWithValue("$archiveSeen", markArchiveSeen ? seenAt : DBNull.Value);
 
-        var added = 0;
+        var added = new List<MatchDto>();
         var updated = 0;
+        var newlyFinished = new List<MatchDto>();
+        var timeDiffers = new List<MatchChange>();
+        var dateDiffers = new List<MatchChange>();
+        var replaced = 0;
         var processed = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var match in matches)
@@ -328,13 +413,63 @@ public class MatchStore
                 continue;
             }
 
-            if (existingKeys.Contains(matchKey))
+            // Aynı maçın 14 gün içindeki başka tarihli kayıtları (ertelenmiş / öne alınmış olabilir).
+            var otherDays = match.Date.HasValue
+                ? Pair(match)
+                    .Where(s => s.Key != matchKey && Math.Abs((s.Match.Date!.Value - match.Date.Value).TotalDays) <= RescheduleWindowDays)
+                    .ToList()
+                : new List<StoredMatch>();
+
+            if (markArchiveSeen)
+            {
+                // Arşiv gerçek tarihi bilir: sadece Excel'den gelmiş başka tarihli kopyaları sil.
+                foreach (var programOnly in otherDays.Where(IsProgramOnly))
+                {
+                    await Remove(programOnly);
+                    replaced++;
+                }
+            }
+
+            if (existing.TryGetValue(matchKey, out var old))
             {
                 updated++;
+                if (old.Match.IsFinished != true && match.IsFinished == true)
+                {
+                    newlyFinished.Add(match);
+                }
+
+                if (old.Match.Time.HasValue && match.Time.HasValue && old.Match.Time != match.Time)
+                {
+                    timeDiffers.Add(new MatchChange(old.Match, match));
+                }
             }
             else
             {
-                added++;
+                if (!markArchiveSeen && otherDays.Count > 0)
+                {
+                    var authoritative = otherDays.FirstOrDefault(s => !IsProgramOnly(s));
+                    if (authoritative is not null)
+                    {
+                        // Arşiv/takvim gerçek tarihi bilir; Excel'deki tarihle ikinci kayıt açma, sadece bildir.
+                        dateDiffers.Add(new MatchChange(authoritative.Match, match));
+                        continue;
+                    }
+
+                    // Önceki bir Excel programındaki tarih: yeni gönderilen programın tarihi geçerli.
+                    foreach (var previous in otherDays)
+                    {
+                        await Remove(previous);
+                        replaced++;
+                    }
+                }
+
+                added.Add(match);
+                var stored = new StoredMatch(matchKey, match, NeverSeenOnCalendar, markArchiveSeen ? seenAt : null);
+                existing[matchKey] = stored;
+                if (match.Date.HasValue)
+                {
+                    Pair(match).Add(stored);
+                }
             }
 
             p.Set(matchKey, match);
@@ -343,8 +478,18 @@ public class MatchStore
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return (added, updated);
+        return new ExternalSaveResult(added, updated, newlyFinished, timeDiffers, dateDiffers, replaced);
     }
+
+    /// <summary>Aynı eşleşmenin bu kadar gün içindeki farklı tarihli kaydı "aynı maç, tarihi değişmiş" sayılır.</summary>
+    private const int RescheduleWindowDays = 14;
+
+    /// <summary>Sadece Excel programından gelmiş kayıt: takvimde görülmemiş ve arşivde yok.</summary>
+    private static bool IsProgramOnly(StoredMatch stored) =>
+        stored.LastSeenAt <= NeverSeenOnCalendar && stored.ArchiveSeenAt is null;
+
+    private static string PairKey(MatchDto match) =>
+        string.Join('|', Normalize(match.HomeTeam), Normalize(match.AwayTeam), Normalize(match.CategoryCode));
 
     /// <summary>
     /// Arşiv taramasının en son ne zaman yapıldığı (hiç yapılmadıysa null).
@@ -381,7 +526,7 @@ public class MatchStore
         command.CommandText = """
             SELECT Date, RawDateText, Time, RawTimeText, Venue, HomeTeam, AwayTeam, SetScores,
                    League, CategoryCode, CategoryDescription, HomeSets, AwaySets, IsFinished, LastSeenAt, MatchKey,
-                   Competition
+                   Competition, ArchiveSeenAt
             FROM Matches
             ORDER BY Date IS NULL, Date, Time IS NULL, Time, Id;
             """;
@@ -411,7 +556,7 @@ public class MatchStore
             };
 
             var lastSeenAt = DateTime.Parse(reader.GetString(14), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-            result.Add(new StoredMatch(reader.GetString(15), match, lastSeenAt));
+            result.Add(new StoredMatch(reader.GetString(15), match, lastSeenAt, GetString(reader, 17)));
         }
 
         return result;
@@ -439,7 +584,7 @@ public class MatchStore
             Normalize(match.League),
             Normalize(match.CategoryCode));
 
-    private sealed record StoredMatch(string Key, MatchDto Match, DateTime LastSeenAt);
+    private sealed record StoredMatch(string Key, MatchDto Match, DateTime LastSeenAt, string? ArchiveSeenAt = null);
 
     /// <summary>
     /// Bir maçı tekil tanımlayan anahtar: tarih + ev sahibi + misafir + kategori.
@@ -453,6 +598,10 @@ public class MatchStore
     private static string BuildKey(string? date, string? home, string? away, string? category) =>
         string.Join('|', Normalize(date), Normalize(home), Normalize(away), Normalize(category));
 
+    /// <summary>
+    /// Karşılaştırma biçimi: fazla boşluklar teke iner, Türkçe kurallarıyla küçük harf, sonra Türkçe harfler
+    /// sadeleşir (ı/i, ş/s, ğ/g, ü/u, ö/o, ç/c). Kaynaklar aynı adı farklı yazabiliyor ("Medıcana" / "MEDICANA").
+    /// </summary>
     private static string Normalize(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -460,9 +609,28 @@ public class MatchStore
             return string.Empty;
         }
 
-        // Fazla boşlukları teke indir, Türkçe kurallarıyla küçük harfe çevir.
-        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        var lower = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .ToLower(TurkishCulture);
+
+        return string.Create(lower.Length, lower, (span, source) =>
+        {
+            for (var i = 0; i < source.Length; i++)
+            {
+                span[i] = source[i] switch
+                {
+                    'ı' => 'i',
+                    'ş' => 's',
+                    'ğ' => 'g',
+                    'ü' => 'u',
+                    'ö' => 'o',
+                    'ç' => 'c',
+                    'â' => 'a',
+                    'î' => 'i',
+                    'û' => 'u',
+                    var c => c,
+                };
+            }
+        });
     }
 
     private SqliteConnection Open()

@@ -64,9 +64,9 @@
                             <td class="c-time"><span class="mono">@MatchFormat.Time(match)</span></td>
                             <td class="c-match">
                                 <div class="teams">
-                                    <span class="home">@match.HomeTeam</span>
+                                    <span class="home">@MatchFormat.Team(match.HomeTeam)</span>
                                     <span class="sep" aria-label="karşı">-</span>
-                                    <span class="away">@match.AwayTeam</span>
+                                    <span class="away">@MatchFormat.Team(match.AwayTeam)</span>
                                 </div>
                             </td>
                             <td class="c-league">

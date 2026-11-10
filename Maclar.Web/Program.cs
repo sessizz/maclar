@@ -35,6 +35,9 @@ builder.Services.AddHttpClient<ArchiveScraperService>(client => client.Timeout =
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() });
 builder.Services.AddHostedService<ArchiveRefreshBackgroundService>();
 
+// Haftalık Excel programı: fisbot Telegram'dan aldığı .xlsx dosyasını POST /api/program ile iletir.
+builder.Services.AddSingleton<ProgramImportService>();
+
 // Uygulama Coolify (Traefik) reverse proxy'sinin arkasında çalışıyor. Gerçek istemci IP'sini
 // X-Forwarded-For'dan almazsak tüm kullanıcılar proxy IP'si ile aynı rate limit kovasına düşer.
 // ForwardLimit = 1: sadece proxy'nin en son eklediği (en sağdaki) değer kullanılır;

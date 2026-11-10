@@ -25,6 +25,10 @@ public class TelegramNotifier
         _chatId = configuration["Telegram:ChatId"];
     }
 
+    /// <summary>Telegram HTML modu için kaçış: sadece &amp;, &lt; ve &gt;.</summary>
+    public static string Escape(string? text) =>
+        (text ?? string.Empty).Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_botToken) && !string.IsNullOrWhiteSpace(_chatId);
 
     /// <summary>
