@@ -33,7 +33,8 @@ public class MatchSyncService
     /// <summary>
     /// Siteye gitmeden, veritabanındaki maçları cache'e yükler (uygulama açılışında).
     /// </summary>
-    public async Task LoadFromStoreAsync(CancellationToken cancellationToken = default)
+    /// <returns>Yüklenen maç sayısı.</returns>
+    public async Task<int> LoadFromStoreAsync(CancellationToken cancellationToken = default)
     {
         var (matches, lastSeenAt) = await _store.GetAllAsync(cancellationToken);
         if (matches.Count > 0)
@@ -42,6 +43,7 @@ public class MatchSyncService
         }
 
         _logger.LogInformation("Veritabanından {Count} maç yüklendi ({Path}).", matches.Count, _store.DatabasePath);
+        return matches.Count;
     }
 
     /// <summary>

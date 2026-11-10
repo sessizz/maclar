@@ -183,6 +183,7 @@ uygulamayı açıp tabloyu, aramayı ve "Verileri yenile" butonunu kontrol et.
 | `Matches:RefreshMinutes` | 60 | Background yenileme aralığı (dakika). `appsettings.json`'da tanımlı değil; env ile `Matches__RefreshMinutes` verilebilir. |
 | `Telegram:BotToken` | — | Bot token. Env: `Telegram__BotToken`. Gizli; repoya koyma. |
 | `Telegram:ChatId` | — | Bildirimin gideceği sohbet/grup id'si. Env: `Telegram__ChatId`. |
+| `Telegram:StartupMessage` | `true` | Açılışta (ilk senkronizasyondan sonra) Telegram'a durum mesajı: DB'den yüklenen sayı + ilk senkronizasyon sonucu. Env: `Telegram__StartupMessage`. |
 | `ConnectionStrings:Matches` | `Data Source=data/maclar.db` | SQLite bağlantısı. Env: `ConnectionStrings__Matches`. |
 | `ASPNETCORE_URLS` | `http://0.0.0.0:8080` (Docker) | Dinlenen adres. |
 
