@@ -231,6 +231,10 @@ Sunucuya filtreleme ekleme.
 - Gün düğmeleri sadece Maçlar'da (`ShowDayFilter`); son dört gündeki maç günleri solda,
   ardından "Tümü", bugün ve sonraki maç günleri sağda. "Tümü" sayfadaki tüm aralığı gösterir.
   Geçmiş'te gün sayısı büyüyeceği için gün düğmeleri yok.
+- Küme menüsünde yıldızlanan kümeler `localStorage.favoriteLeagues` içinde saklanır.
+  Favoriler menünün solunda hızlı filtre badge'leri olarak görünür; seçili badge'e tekrar
+  tıklamak küme filtresini kaldırır. Gün ve arama filtresi korunur. Tercihler Maçlar ve
+  Geçmiş arasında paylaşılır; o sayfada olmayan favoriler silinmez, sadece gösterilmez.
 - "Verileri yenile" formu `returnUrl` (sayfa + filtreler) gönderir; hem `Refresh` hem rate
   limit redirect'i sadece site içi adrese döner (`//` ve `/\` ile başlayanlar reddedilir).
 

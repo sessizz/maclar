@@ -29,16 +29,29 @@
                 </div>
             }
             <div class="spacer"></div>
-            <label class="sr-only" for="leagueFilter">Küme</label>
-            <div class="select">
-                <select id="leagueFilter" data-league-filter>
+            <div class="league-tools">
+                <div class="favorite-leagues" data-favorite-leagues role="group" aria-label="Favori kümeler" hidden></div>
+                <label class="sr-only" for="leagueFilter">Küme</label>
+                <select id="leagueFilter" data-league-filter hidden>
                     <option value="">Tüm kümeler</option>
                     @foreach (var league in Model.Leagues)
                     {
                         <option value="@league">@league</option>
                     }
                 </select>
-                <partial name="_Icon" model="@("chevron")" />
+                <details class="league-menu" data-league-menu>
+                    <summary class="btn"><span data-league-label>Tüm kümeler</span><partial name="_Icon" model="@("chevron")" /></summary>
+                    <div class="league-options" role="group" aria-label="Küme seçimi">
+                        <button type="button" class="league-choice" data-league-choice="" aria-pressed="true">Tüm kümeler</button>
+                        @foreach (var league in Model.Leagues)
+                        {
+                            <div class="league-option">
+                                <button type="button" class="league-choice" data-league-choice="@league" aria-pressed="false">@league</button>
+                                <button type="button" class="league-star" data-league-star="@league" aria-label="@league favorilere ekle" aria-pressed="false" title="Favorilere ekle"><partial name="_Icon" model="@("star")" /></button>
+                            </div>
+                        }
+                    </div>
+                </details>
             </div>
         </div>
 

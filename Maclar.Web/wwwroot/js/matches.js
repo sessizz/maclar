@@ -9,6 +9,46 @@
 
     const searchInput = document.getElementById('matchSearch');
     const leagueSelect = root.querySelector('[data-league-filter]');
+    const leagueMenu = root.querySelector('[data-league-menu]');
+    const favoriteContainer = root.querySelector('[data-favorite-leagues]');
+    const leagueChoices = Array.from(root.querySelectorAll('[data-league-choice]'));
+    const leagueStars = Array.from(root.querySelectorAll('[data-league-star]'));
+    const favoriteKey = 'favoriteLeagues';
+    let favorites = [];
+    try {
+        const saved = JSON.parse(localStorage.getItem(favoriteKey) || '[]');
+        if (Array.isArray(saved)) favorites = [...new Set(saved.filter(v => typeof v === 'string' && v))];
+    } catch { /* Depolama kapalıysa favoriler bu sayfada kullanılabilir. */ }
+
+    function renderLeagueControls() {
+        if (!leagueSelect || !leagueMenu) return;
+        const league = leagueSelect.value;
+        root.querySelector('[data-league-label]').textContent = league || 'Tüm kümeler';
+        leagueChoices.forEach(btn => btn.setAttribute('aria-pressed', String(btn.dataset.leagueChoice === league)));
+        leagueStars.forEach(btn => {
+            const on = favorites.includes(btn.dataset.leagueStar);
+            const action = on ? 'favorilerden çıkar' : 'favorilere ekle';
+            btn.setAttribute('aria-pressed', String(on));
+            btn.setAttribute('aria-label', `${btn.dataset.leagueStar} ${action}`);
+            btn.title = on ? 'Favorilerden çıkar' : 'Favorilere ekle';
+        });
+        favoriteContainer.replaceChildren();
+        favorites.filter(value => Array.from(leagueSelect.options).some(o => o.value === value)).forEach(value => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'badge badge-outline favorite-league';
+            btn.textContent = `★ ${value}`;
+            btn.setAttribute('aria-label', `${value} kümesini filtrele`);
+            btn.setAttribute('aria-pressed', String(league === value));
+            btn.addEventListener('click', () => {
+                leagueSelect.value = leagueSelect.value === value ? '' : value;
+                update();
+            });
+            favoriteContainer.append(btn);
+        });
+        favoriteContainer.hidden = favoriteContainer.childElementCount === 0;
+    }
+
     const dayButtons = Array.from(root.querySelectorAll('[data-day]')).filter(el => el.tagName === 'BUTTON');
     const rows = Array.from(root.querySelectorAll('tr[data-row]'));
     const groups = Array.from(root.querySelectorAll('tr[data-group]'));
@@ -91,12 +131,34 @@
     }
 
     function update() {
+        renderLeagueControls();
         apply();
         syncUrl();
     }
 
     searchInput?.addEventListener('input', update);
     leagueSelect?.addEventListener('change', update);
+    leagueChoices.forEach(btn => btn.addEventListener('click', () => {
+        leagueSelect.value = btn.dataset.leagueChoice;
+        leagueMenu.open = false;
+        leagueMenu.querySelector('summary').focus();
+        update();
+    }));
+    leagueStars.forEach(btn => btn.addEventListener('click', () => {
+        const value = btn.dataset.leagueStar;
+        favorites = favorites.includes(value) ? favorites.filter(v => v !== value) : [...favorites, value];
+        try { localStorage.setItem(favoriteKey, JSON.stringify(favorites)); } catch { /* Sayfa içindeki seçim korunur. */ }
+        renderLeagueControls();
+    }));
+    document.addEventListener('click', event => {
+        if (leagueMenu && !leagueMenu.contains(event.target)) leagueMenu.open = false;
+    });
+    leagueMenu?.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            leagueMenu.open = false;
+            leagueMenu.querySelector('summary').focus();
+        }
+    });
     dayButtons.forEach(btn => btn.addEventListener('click', () => {
         day = btn.dataset.day;
         update();
@@ -107,5 +169,6 @@
         day = '';
     }
 
+    renderLeagueControls();
     apply();
 })();
