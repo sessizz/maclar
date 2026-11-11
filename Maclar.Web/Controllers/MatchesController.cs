@@ -22,21 +22,21 @@ public class MatchesController : Controller
     }
 
     /// <summary>
-    /// Bugün ve sonrasındaki maçlar (tarihi belirsiz olanlar en sonda).
+    /// Son dört gün ve sonrasındaki maçlar (tarihi belirsiz olanlar en sonda).
     /// </summary>
     public async Task<IActionResult> Index(string? search, CancellationToken cancellationToken)
     {
         var (matches, lastUpdatedAt, errorMessage) = await GetMatchesAsync(cancellationToken);
         var today = IstanbulClock.Today;
 
-        var upcoming = matches.Where(m => m.Date is null || m.Date.Value.Date >= today).ToList();
+        var recentAndUpcoming = matches.Where(m => m.Date is null || m.Date.Value.Date >= today.AddDays(-4)).ToList();
 
-        var viewModel = BuildList(upcoming, newestFirst: false);
+        var viewModel = BuildList(recentAndUpcoming, newestFirst: false);
         viewModel.Title = "İstanbul Voleybol Maç Takvimi";
         viewModel.Nav = "matches";
         viewModel.Search = search;
         viewModel.ShowDayFilter = true;
-        viewModel.EmptyMessage = "Bugün ve sonrası için kayıtlı maç yok. Oynanmış maçlar Geçmiş sekmesinde.";
+        viewModel.EmptyMessage = "Son dört gün ve sonrası için kayıtlı maç yok. Daha eski maçlar Geçmiş sekmesinde.";
         viewModel.LastUpdatedAt = lastUpdatedAt;
         viewModel.ErrorMessage = errorMessage;
 

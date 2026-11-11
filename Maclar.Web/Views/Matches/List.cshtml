@@ -3,6 +3,7 @@
     ViewData["Title"] = Model.Title;
     ViewData["Nav"] = Model.Nav;
     ViewData["Search"] = Model.Search;
+    var today = Maclar.Web.Services.IstanbulClock.Today;
 }
 
 <partial name="_PageHead" model="@((Model.Title, Model.LastUpdatedAt, Model.ErrorMessage))" />
@@ -14,8 +15,13 @@
             @if (Model.ShowDayFilter)
             {
                 <div class="toggles" role="group" aria-label="Gün">
+                    @foreach (var group in Model.Groups.Where(g => g.Date.HasValue && g.Date.Value < today))
+                    {
+                        var key = group.Date!.Value.ToString("yyyy-MM-dd");
+                        <button class="toggle" type="button" data-day="@key" aria-pressed="false">@MatchFormat.ShortDay(group.Date.Value) <span class="count">@group.Matches.Count</span></button>
+                    }
                     <button class="toggle is-on" type="button" data-day="" aria-pressed="true">Tümü <span class="count">@Model.TotalCount</span></button>
-                    @foreach (var group in Model.Groups.Where(g => g.Date.HasValue))
+                    @foreach (var group in Model.Groups.Where(g => g.Date.HasValue && g.Date.Value >= today))
                     {
                         var key = group.Date!.Value.ToString("yyyy-MM-dd");
                         <button class="toggle" type="button" data-day="@key" aria-pressed="false">@MatchFormat.ShortDay(group.Date.Value) <span class="count">@group.Matches.Count</span></button>

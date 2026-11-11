@@ -24,7 +24,7 @@ Dockerfile                  # Multi-stage build (sdk:8.0 -> aspnet:8.0), port 80
 Maclar.Web/
   Program.cs                # DI kaydı + pipeline. Varsayılan route: Matches/Index
   Controllers/
-    MatchesController.cs    # Index "/" (bugün ve sonrası), Past "/gecmis", Venues "/salonlar", Refresh (POST)
+    MatchesController.cs    # Index "/" (son dört gün ve sonrası), Past "/gecmis", Venues "/salonlar", Refresh (POST)
     HomeController.cs       # Şablondan kalma (Index/Privacy/Error); sadece Error kullanılıyor
   Services/
     IMatchScraperService.cs / MatchScraperService.cs   # Siteyi indirir, <table> satırlarını MatchDto'ya çevirir
@@ -99,7 +99,7 @@ Tekillik ve güncelleme kuralları (`MatchStore`):
   `LastSeenAt` sitede en son görüldüğü zamanı tutar; `FirstSeenAt` ilk eklenme.
 - Bilinen sınır: bir maçın tarihi, takım adı, küme veya kategorisi sitede
   değişirse yeni kayıt oluşur, eskisi de kalır.
-- Sayfalar: **Maçlar** (`/`) bugün ve sonrası, eskiden yeniye; tarihi belirsizler en sonda.
+- Sayfalar: **Maçlar** (`/`) son dört gün ve sonrası, eskiden yeniye; tarihi belirsizler en sonda.
   **Geçmiş** (`/gecmis`) bugünden öncekiler, en yeni gün üstte (gün içinde saat artan).
   **Salonlar** (`/salonlar`) salon başına yaklaşan/toplam maç, ilk yaklaşan ve son oynanan
   tarih; salona tıklayınca `/?search=<salon>` açılır. "Bugün" = `IstanbulClock.Today`.
@@ -225,7 +225,9 @@ Sunucuya filtreleme ekleme.
   Alanlar: tarih, gün adı, salon, ev sahibi, misafir, küme, kategori.
 - Filtre durumu adres çubuğunda: `?search=`, `?gun=yyyy-MM-dd`, `?kume=` (`replaceState`,
   paylaşılabilir link). Gün başlığı filtreye uyan maç yoksa gizlenir, sayısı güncellenir.
-- Gün düğmeleri sadece Maçlar'da (`ShowDayFilter`); Geçmiş'te gün sayısı büyüyeceği için yok.
+- Gün düğmeleri sadece Maçlar'da (`ShowDayFilter`); son dört gündeki maç günleri solda,
+  ardından "Tümü", bugün ve sonraki maç günleri sağda. "Tümü" sayfadaki tüm aralığı gösterir.
+  Geçmiş'te gün sayısı büyüyeceği için gün düğmeleri yok.
 - "Verileri yenile" formu `returnUrl` (sayfa + filtreler) gönderir; hem `Refresh` hem rate
   limit redirect'i sadece site içi adrese döner (`//` ve `/\` ile başlayanlar reddedilir).
 

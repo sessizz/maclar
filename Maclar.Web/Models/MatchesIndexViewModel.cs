@@ -6,7 +6,7 @@ namespace Maclar.Web.Models;
 public sealed record MatchDayGroup(DateTime? Date, IReadOnlyList<MatchDto> Matches);
 
 /// <summary>
-/// "Maçlar" (bugün ve sonrası) ve "Geçmiş" sayfalarının ortak modeli.
+/// "Maçlar" (son dört gün ve sonrası) ve "Geçmiş" sayfalarının ortak modeli.
 /// </summary>
 public class MatchesIndexViewModel
 {
