@@ -16,7 +16,9 @@ builder.Services.AddDataProtection()
     .SetApplicationName("Maclar.Web")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "keys")));
 
-builder.Services.AddHttpClient<IMatchScraperService, MatchScraperService>();
+// Takvim için ana sayfadan alınan oturum çerezleri aynı handler ile korunmalı.
+builder.Services.AddHttpClient<IMatchScraperService, MatchScraperService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() });
 builder.Services.AddSingleton<CachedMatchService>();
 builder.Services.AddSingleton<ICachedMatchService>(sp => sp.GetRequiredService<CachedMatchService>());
 builder.Services.AddSingleton<MatchStore>();

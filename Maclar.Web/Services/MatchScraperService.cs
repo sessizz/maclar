@@ -16,6 +16,14 @@ public class MatchScraperService : IMatchScraperService
 
     public async Task<IReadOnlyList<MatchDto>> GetMatchesAsync(CancellationToken cancellationToken = default)
     {
+        // Site, ana sayfa ziyaretinde RootVisited / ASP.NET oturum çerezlerini oluşturuyor.
+        // Bu oturum olmadan doğrudan takvim isteğinde "Bu Hafta" tablosu eksik gelebiliyor.
+        using var rootRequest = new HttpRequestMessage(HttpMethod.Get, "https://istanbul.voleyboliltemsilciligi.com/");
+        rootRequest.Headers.Referrer = new Uri("https://istanbul.voleyboliltemsilciligi.com/Misafir");
+        rootRequest.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        using var rootResponse = await _httpClient.SendAsync(rootRequest, cancellationToken);
+        rootResponse.EnsureSuccessStatusCode();
+
         using var request = new HttpRequestMessage(HttpMethod.Get, MatchesUrl);
         // Sitelerin basit korumalarına takılmamak için Referer ve User-Agent ayarlıyoruz.
         request.Headers.Referrer = new Uri("https://istanbul.voleyboliltemsilciligi.com/Misafir");
@@ -29,147 +37,150 @@ public class MatchScraperService : IMatchScraperService
         var htmlDoc = new HtmlDocument();
         htmlDoc.LoadHtml(html);
 
-        // Sayfadaki ana tabloyu bulmaya çalışıyoruz; ileride ihtiyaç olursa daha spesifik bir selector kullanılabilir.
-        var table = htmlDoc.DocumentNode.SelectSingleNode("//table");
-        if (table is null)
-        {
-            return Array.Empty<MatchDto>();
-        }
-
-        var rows = table.SelectNodes(".//tr");
-        if (rows is null)
+        // Bu Hafta ve Gelecek Hafta tablolarının ikisini de oku.
+        var tables = htmlDoc.DocumentNode.SelectNodes("//table[contains(@id, 'gvmusabakaliste')]");
+        if (tables is null)
         {
             return Array.Empty<MatchDto>();
         }
 
         var matches = new List<MatchDto>();
-
-        string? currentDateText = null;
-        DateTime? currentDate = null;
-        string? currentVenueText = null;
-
-        foreach (var row in rows.Skip(1)) // ilk satır çoğunlukla header
+        foreach (var table in tables)
         {
-            var cells = row.SelectNodes(".//td");
-            if (cells is null || cells.Count < 5)
+            var rows = table.SelectNodes(".//tr");
+            if (rows is null)
             {
                 continue;
             }
 
-            // Önce saat hücresini bul (her satırda olması bekleniyor)
-            int timeIndex = -1;
-            string? timeText = null;
-            for (int i = 0; i < cells.Count; i++)
+            // Bir tablonun tarih/salon bilgisi diğer tabloya taşınmasın.
+            string? currentDateText = null;
+            DateTime? currentDate = null;
+            string? currentVenueText = null;
+
+            foreach (var row in rows.Skip(1)) // ilk satır çoğunlukla header
             {
-                var t = CleanText(cells[i].InnerText);
-                if (IsTime(t))
+                var cells = row.SelectNodes(".//td");
+                if (cells is null || cells.Count < 5)
                 {
-                    timeIndex = i;
-                    timeText = t;
-                    break;
+                    continue;
                 }
-            }
 
-            if (timeIndex == -1)
-            {
-                // Bu satır gerçek maç satırı olmayabilir, atla.
-                continue;
-            }
-
-            // Saat hücresinin solundaki hücre salon, onun da solundaki tarih (varsa).
-            string? venue = null;
-            string? dateText = null;
-            DateTime? date = null;
-
-            int venueIndex = timeIndex - 1;
-            if (venueIndex >= 0)
-            {
-                var venueCandidate = CleanText(cells[venueIndex].InnerText);
-                // Venue, saat veya tarih formatında olmamalı.
-                if (!string.IsNullOrWhiteSpace(venueCandidate) && !IsTime(venueCandidate) && !TryParseDate(venueCandidate, out _))
+                // Önce saat hücresini bul (her satırda olması bekleniyor)
+                int timeIndex = -1;
+                string? timeText = null;
+                for (int i = 0; i < cells.Count; i++)
                 {
-                    venue = venueCandidate;
-                    currentVenueText = venueCandidate;
+                    var t = CleanText(cells[i].InnerText);
+                    if (IsTime(t))
+                    {
+                        timeIndex = i;
+                        timeText = t;
+                        break;
+                    }
                 }
-            }
 
-            if (venue is null)
-            {
-                // Bu satırda salon yoksa, bir önceki satırın salonunu kullan.
-                venue = currentVenueText ?? string.Empty;
-            }
-
-            int dateIndex = venueIndex - 1;
-            if (dateIndex >= 0)
-            {
-                var dateCandidate = CleanText(cells[dateIndex].InnerText);
-                if (TryParseDate(dateCandidate, out var parsedDate))
+                if (timeIndex == -1)
                 {
-                    currentDateText = dateCandidate;
-                    currentDate = parsedDate;
+                    // Bu satır gerçek maç satırı olmayabilir, atla.
+                    continue;
                 }
+
+                // Saat hücresinin solundaki hücre salon, onun da solundaki tarih (varsa).
+                string? venue = null;
+                string? dateText = null;
+                DateTime? date = null;
+
+                int venueIndex = timeIndex - 1;
+                if (venueIndex >= 0)
+                {
+                    var venueCandidate = CleanText(cells[venueIndex].InnerText);
+                    // Venue, saat veya tarih formatında olmamalı.
+                    if (!string.IsNullOrWhiteSpace(venueCandidate) && !IsTime(venueCandidate) && !TryParseDate(venueCandidate, out _))
+                    {
+                        venue = venueCandidate;
+                        currentVenueText = venueCandidate;
+                    }
+                }
+
+                if (venue is null)
+                {
+                    // Bu satırda salon yoksa, bir önceki satırın salonunu kullan.
+                    venue = currentVenueText ?? string.Empty;
+                }
+
+                int dateIndex = venueIndex - 1;
+                if (dateIndex >= 0)
+                {
+                    var dateCandidate = CleanText(cells[dateIndex].InnerText);
+                    if (TryParseDate(dateCandidate, out var parsedDate))
+                    {
+                        currentDateText = dateCandidate;
+                        currentDate = parsedDate;
+                    }
+                }
+
+                dateText = currentDateText ?? string.Empty;
+                date = currentDate;
+
+                // Kolon sırası, saat indexine göre relatif:
+                // timeIndex: Saat
+                // timeIndex +1: Ev Sahibi (A)
+                // timeIndex +2: A (Ev sahibi set)
+                // timeIndex +3: B (Misafir set)
+                // timeIndex +4: Misafir (B)
+                // timeIndex +5: Set Sonuçları
+
+                int homeIndex = timeIndex + 1;
+                int homeSetsIndex = timeIndex + 2;
+                int awaySetsIndex = timeIndex + 3;
+                int awayIndex = timeIndex + 4;
+                int setIndex = timeIndex + 5;
+
+                if (setIndex >= cells.Count)
+                {
+                    continue;
+                }
+
+                var homeTeam = CleanText(cells.ElementAtOrDefault(homeIndex)?.InnerText ?? string.Empty);
+                var homeSetsText = CleanText(cells.ElementAtOrDefault(homeSetsIndex)?.InnerText ?? string.Empty);
+                var awaySetsText = CleanText(cells.ElementAtOrDefault(awaySetsIndex)?.InnerText ?? string.Empty);
+                var awayTeam = CleanText(cells.ElementAtOrDefault(awayIndex)?.InnerText ?? string.Empty);
+                var setScores = CleanText(cells.ElementAtOrDefault(setIndex)?.InnerText ?? string.Empty);
+
+                // Küme ve Ktg sütunları – genelde sondan birkaç önceki kolonlarda
+                // Küme genelde Ktg'den bir önceki kolonda (sondan 4.)
+                var league = CleanText(cells.ElementAtOrDefault(cells.Count - 4)?.InnerText ?? string.Empty);
+                var categoryCode = CleanText(cells[^3].InnerText);
+
+                var match = new MatchDto
+                {
+                    RawDateText = dateText,
+                    RawTimeText = timeText,
+                    Venue = venue,
+                    HomeTeam = homeTeam,
+                    AwayTeam = awayTeam,
+                    SetScores = setScores,
+                    League = league,
+                    CategoryCode = categoryCode,
+                    Date = date,
+                    Time = ParseTime(timeText ?? string.Empty),
+                };
+
+                if (int.TryParse(homeSetsText, out var hSets))
+                {
+                    match.HomeSets = hSets;
+                }
+
+                if (int.TryParse(awaySetsText, out var aSets))
+                {
+                    match.AwaySets = aSets;
+                }
+
+                FillSetsAndStatus(match);
+
+                matches.Add(match);
             }
-
-            dateText = currentDateText ?? string.Empty;
-            date = currentDate;
-
-            // Kolon sırası, saat indexine göre relatif:
-            // timeIndex: Saat
-            // timeIndex +1: Ev Sahibi (A)
-            // timeIndex +2: A (Ev sahibi set)
-            // timeIndex +3: B (Misafir set)
-            // timeIndex +4: Misafir (B)
-            // timeIndex +5: Set Sonuçları
-
-            int homeIndex = timeIndex + 1;
-            int homeSetsIndex = timeIndex + 2;
-            int awaySetsIndex = timeIndex + 3;
-            int awayIndex = timeIndex + 4;
-            int setIndex = timeIndex + 5;
-
-            if (setIndex >= cells.Count)
-            {
-                continue;
-            }
-
-            var homeTeam = CleanText(cells.ElementAtOrDefault(homeIndex)?.InnerText ?? string.Empty);
-            var homeSetsText = CleanText(cells.ElementAtOrDefault(homeSetsIndex)?.InnerText ?? string.Empty);
-            var awaySetsText = CleanText(cells.ElementAtOrDefault(awaySetsIndex)?.InnerText ?? string.Empty);
-            var awayTeam = CleanText(cells.ElementAtOrDefault(awayIndex)?.InnerText ?? string.Empty);
-            var setScores = CleanText(cells.ElementAtOrDefault(setIndex)?.InnerText ?? string.Empty);
-
-            // Küme ve Ktg sütunları – genelde sondan birkaç önceki kolonlarda
-            // Küme genelde Ktg'den bir önceki kolonda (sondan 4.)
-            var league = CleanText(cells.ElementAtOrDefault(cells.Count - 4)?.InnerText ?? string.Empty);
-            var categoryCode = CleanText(cells[^3].InnerText);
-
-            var match = new MatchDto
-            {
-                RawDateText = dateText,
-                RawTimeText = timeText,
-                Venue = venue,
-                HomeTeam = homeTeam,
-                AwayTeam = awayTeam,
-                SetScores = setScores,
-                League = league,
-                CategoryCode = categoryCode,
-                Date = date,
-                Time = ParseTime(timeText ?? string.Empty),
-            };
-
-            if (int.TryParse(homeSetsText, out var hSets))
-            {
-                match.HomeSets = hSets;
-            }
-
-            if (int.TryParse(awaySetsText, out var aSets))
-            {
-                match.AwaySets = aSets;
-            }
-
-            FillSetsAndStatus(match);
-
-            matches.Add(match);
         }
 
         return matches;

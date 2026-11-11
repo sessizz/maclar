@@ -200,7 +200,10 @@ Sonuçları:
 ## Scraper notları (en kırılgan kısım)
 
 `MatchScraperService` hedef sitenin HTML yapısına sıkı bağlıdır:
-- Sayfadaki **ilk** `<table>` alınır, ilk satır başlık kabul edilip atlanır.
+- Önce ana sayfa aynı çerezli HttpClient ile ziyaret edilir (`RootVisited` / ASP.NET oturumu).
+  Doğrudan takvim isteğinde "Bu Hafta" tablosu eksik gelebilir; bu adımı kaldırma.
+- `id` içinde `gvmusabakaliste` geçen **tüm** tablolar okunur (Bu Hafta + Gelecek Hafta).
+  Her tabloda ilk satır başlık kabul edilip atlanır; tarih/salon devri tablo başında sıfırlanır.
 - Her satırda saat formatına uyan ilk hücre "saat" çapası olur. Diğer kolonlar
   ona göre bulunur: solunda salon, onun solunda tarih (`dd.MM.yyyy`); sağında
   ev sahibi, A set, B set, misafir, set sonuçları.
